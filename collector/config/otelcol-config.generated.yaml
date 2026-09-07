@@ -246,21 +246,6 @@ processors:
         == nil and resource.attributes["service.tier"] == "standard"
       - set(resource.attributes["telemetry.tier"], "drop") where resource.attributes["telemetry.tier"]
         == nil and resource.attributes["service.tier"] == "low"
-  filter/drop_logs:
-    error_mode: ignore
-    logs:
-      log_record:
-      - resource.attributes["telemetry.tier"] != "drop"
-  filter/drop_traces:
-    error_mode: ignore
-    traces:
-      span:
-      - resource.attributes["telemetry.tier"] != "drop"
-  filter/drop_metrics:
-    error_mode: ignore
-    metrics:
-      metric:
-      - resource.attributes["telemetry.tier"] != "drop"
   tail_sampling:
     decision_wait: 5s
     policies:
@@ -402,10 +387,10 @@ service:
       receivers:
       - routing/logs
       processors:
-      - count/logs_all
-      - filter/drop_logs
+      - batch
       exporters:
       - debug/audit
+      - count/logs_all
     traces/in:
       receivers:
       - otlp
@@ -434,10 +419,10 @@ service:
       receivers:
       - routing/traces
       processors:
-      - count/traces_all
-      - filter/drop_traces
+      - batch
       exporters:
       - debug/audit
+      - count/traces_all
     metrics/in:
       receivers:
       - otlp
@@ -465,10 +450,10 @@ service:
       receivers:
       - routing/metrics
       processors:
-      - count/metrics_all
-      - filter/drop_metrics
+      - batch
       exporters:
       - debug/audit
+      - count/metrics_all
     metrics/cost_from_logs:
       receivers:
       - count/logs_all
