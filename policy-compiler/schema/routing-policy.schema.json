@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "routing-policy",
+  "type": "object",
+  "required": ["version", "rules", "default_decision"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "minimum": 1},
+    "default_decision": {"type": "string", "enum": ["hot", "warm", "drop"]},
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "when", "reason"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "when": {"type": "object"},
+          "decision": {"type": "string", "enum": ["hot", "warm", "drop", "downgrade_one_level"]},
+          "decision_by_tier": {
+            "type": "object",
+            "additionalProperties": {"type": "string", "enum": ["hot", "warm", "drop", "drop-candidate"]}
+          },
+          "reason": {"type": "string", "minLength": 1}
+        },
+        "anyOf": [
+          {"required": ["decision"]},
+          {"required": ["decision_by_tier"]}
+        ]
+      }
+    }
+  }
+}

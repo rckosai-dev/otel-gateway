@@ -1,0 +1,55 @@
+{
+  "title": "Pipeline Health (OTel Gateway Collector)",
+  "uid": "otel-pipeline-health",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Accepted vs Sent vs Dropped (self-telemetry)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (job) (rate(otelcol_receiver_accepted_log_records_total[1m]))",
+          "legendFormat": "accepted logs ({{job}})"
+        },
+        {
+          "expr": "sum by (job) (rate(otelcol_exporter_sent_log_records_total[1m]))",
+          "legendFormat": "sent logs ({{job}})"
+        },
+        {
+          "expr": "sum by (job) (rate(otelcol_processor_dropped_log_records_total[1m]))",
+          "legendFormat": "dropped logs ({{job}})"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Exporter queue size",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "otelcol_exporter_queue_size",
+          "legendFormat": "{{exporter}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Active policy version",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "count by (policy_version) (logs_count_by_service{})"
+        }
+      ]
+    }
+  ]
+}

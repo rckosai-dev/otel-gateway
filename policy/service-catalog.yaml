@@ -1,0 +1,51 @@
+# Catálogo de serviços — fonte de verdade para classificação de criticidade.
+# Owned pelo time de plataforma/observability; times de produto só propõem via PR.
+#
+# tier:
+#   critical  -> Tier-0/1: impacto direto em receita/SLA externo
+#   standard  -> Tier-2: impacto operacional, sem SLA externo direto
+#   low       -> Tier-3: batch, jobs internos, baixo valor de diagnóstico
+#
+# compliance_hold: true força retenção mínima em warm independente de tier/volume
+# (auditoria, dados regulatórios) — nunca pode ser "drop".
+services:
+  - name: checkout-api
+    tier: critical
+    team: payments
+    cost_center: CC-1001
+    compliance_hold: false
+  - name: payment-gateway
+    tier: critical
+    team: payments
+    cost_center: CC-1001
+    compliance_hold: true
+  - name: auth-service
+    tier: critical
+    team: identity
+    cost_center: CC-1002
+    compliance_hold: true
+  - name: inventory-service
+    tier: standard
+    team: catalog
+    cost_center: CC-1003
+    compliance_hold: false
+  - name: frontend-bff
+    tier: standard
+    team: web
+    cost_center: CC-1004
+    compliance_hold: false
+  - name: notification-worker
+    tier: low
+    team: growth
+    cost_center: CC-1005
+    compliance_hold: false
+  - name: recommendation-engine
+    tier: low
+    team: data-platform
+    cost_center: CC-2003
+    compliance_hold: false
+  - name: batch-etl-job
+    tier: low
+    team: data-platform
+    cost_center: CC-2003
+    compliance_hold: false

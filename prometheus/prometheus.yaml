@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # Gerado por policy-compiler/compile.py a partir de policy/cost-budget.yaml
+  # — não edite à mão, rode `make compile-policy`.
+  - /etc/prometheus/rules/cost-rules.generated.yaml
+
+scrape_configs:
+  - job_name: otelcol-self
+    static_configs:
+      - targets: ["otel-gateway-collector:8888"]
+
+  - job_name: otelcol-signals
+    static_configs:
+      - targets: ["otel-gateway-collector:8889"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

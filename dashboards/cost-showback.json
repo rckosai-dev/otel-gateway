@@ -1,0 +1,125 @@
+{
+  "title": "Telemetry Cost Showback",
+  "uid": "otel-cost-showback",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "cost_center",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(policy:volume_gb:by_service_tier, cost_center)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "Prometheus" },
+        "query": "label_values(policy:volume_gb:by_service_tier{cost_center=~\"$cost_center\"}, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Custo residual (hot + warm) por cost-center",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (cost_center) (cost:residual_usd:by_service_tier{cost_center=~\"$cost_center\", service_name=~\"$service\"})",
+          "legendFormat": "{{cost_center}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "title": "Economia por downgrade (hot evitado -> warm)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (cost_center) (cost:downgrade_saving_usd:by_service{cost_center=~\"$cost_center\", service_name=~\"$service\"})",
+          "legendFormat": "{{cost_center}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "title": "Economia por drop (descartado, custo evitado total)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (cost_center) (cost:drop_saving_usd:by_service{cost_center=~\"$cost_center\", service_name=~\"$service\"})",
+          "legendFormat": "{{cost_center}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "Distribuição de volume por tier",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (telemetry_tier) (policy:volume_gb:by_service_tier{cost_center=~\"$cost_center\", service_name=~\"$service\"})",
+          "legendFormat": "{{telemetry_tier}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "decgbytes" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "Top serviços por custo residual",
+      "type": "table",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (service_name, team, cost_center) (cost:residual_usd:by_service_tier{cost_center=~\"$cost_center\", service_name=~\"$service\"}))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Serviços sob pressão de budget (downgrade dinâmico ativo)",
+      "type": "table",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "policy:over_budget:by_service == 1",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Volume vs budget por serviço (janela de 1h)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "expr": "policy:volume_gb:by_service{service_name=~\"$service\"}",
+          "legendFormat": "{{service_name}} (realizado)"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "decgbytes" }, "overrides": [] }
+    }
+  ]
+}

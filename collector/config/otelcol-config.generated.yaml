@@ -1,0 +1,492 @@
+# GERADO AUTOMATICAMENTE por policy-compiler/compile.py — NÃO EDITE À MÃO.
+# policy.version=7825d426c7ca
+# Fonte: policy/service-catalog.yaml, policy/routing-policy.yaml, policy/cost-budget.yaml
+# Downgrade dinâmico aplicado nesta compilação: nenhum
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch: {}
+  transform/tag_logs:
+    error_mode: ignore
+    log_statements:
+    - context: resource
+      statements:
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "checkout-api"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "checkout-api"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "payment-gateway"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "payment-gateway"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "auth-service"
+      - set(resource.attributes["team"], "identity") where resource.attributes["service.name"] == "auth-service"
+      - set(resource.attributes["cost_center"], "CC-1002") where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "inventory-service"
+      - set(resource.attributes["team"], "catalog") where resource.attributes["service.name"] == "inventory-service"
+      - set(resource.attributes["cost_center"], "CC-1003") where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "frontend-bff"
+      - set(resource.attributes["team"], "web") where resource.attributes["service.name"] == "frontend-bff"
+      - set(resource.attributes["cost_center"], "CC-1004") where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["team"], "growth") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["cost_center"], "CC-1005") where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "recommendation-engine"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "batch-etl-job"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["policy.version"], "7825d426c7ca")
+    - context: log
+      statements:
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["compliance_hold"]
+        == true
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical" and (severity_number >= SEVERITY_NUMBER_ERROR)
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard" and (severity_number >= SEVERITY_NUMBER_ERROR)
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low" and (severity_number >= SEVERITY_NUMBER_ERROR)
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical"
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard"
+      - set(resource.attributes["telemetry.tier"], "drop") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low"
+  transform/tag_traces:
+    error_mode: ignore
+    trace_statements:
+    - context: resource
+      statements:
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "checkout-api"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "checkout-api"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "payment-gateway"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "payment-gateway"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "auth-service"
+      - set(resource.attributes["team"], "identity") where resource.attributes["service.name"] == "auth-service"
+      - set(resource.attributes["cost_center"], "CC-1002") where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "inventory-service"
+      - set(resource.attributes["team"], "catalog") where resource.attributes["service.name"] == "inventory-service"
+      - set(resource.attributes["cost_center"], "CC-1003") where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "frontend-bff"
+      - set(resource.attributes["team"], "web") where resource.attributes["service.name"] == "frontend-bff"
+      - set(resource.attributes["cost_center"], "CC-1004") where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["team"], "growth") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["cost_center"], "CC-1005") where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "recommendation-engine"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "batch-etl-job"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["policy.version"], "7825d426c7ca")
+    - context: span
+      statements:
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["compliance_hold"]
+        == true
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical" and (status.code == STATUS_CODE_ERROR
+        or attributes["http.status_code"] >= 500)
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard" and (status.code == STATUS_CODE_ERROR
+        or attributes["http.status_code"] >= 500)
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low" and (status.code == STATUS_CODE_ERROR
+        or attributes["http.status_code"] >= 500)
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical"
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard"
+      - set(resource.attributes["telemetry.tier"], "drop") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low"
+  transform/tag_metrics:
+    error_mode: ignore
+    metric_statements:
+    - context: resource
+      statements:
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "checkout-api"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "checkout-api"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "checkout-api"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "payment-gateway"
+      - set(resource.attributes["team"], "payments") where resource.attributes["service.name"] == "payment-gateway"
+      - set(resource.attributes["cost_center"], "CC-1001") where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "payment-gateway"
+      - set(resource.attributes["service.tier"], "critical") where resource.attributes["service.name"]
+        == "auth-service"
+      - set(resource.attributes["team"], "identity") where resource.attributes["service.name"] == "auth-service"
+      - set(resource.attributes["cost_center"], "CC-1002") where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["compliance_hold"], true) where resource.attributes["service.name"] ==
+        "auth-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "inventory-service"
+      - set(resource.attributes["team"], "catalog") where resource.attributes["service.name"] == "inventory-service"
+      - set(resource.attributes["cost_center"], "CC-1003") where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "inventory-service"
+      - set(resource.attributes["service.tier"], "standard") where resource.attributes["service.name"]
+        == "frontend-bff"
+      - set(resource.attributes["team"], "web") where resource.attributes["service.name"] == "frontend-bff"
+      - set(resource.attributes["cost_center"], "CC-1004") where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "frontend-bff"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["team"], "growth") where resource.attributes["service.name"] == "notification-worker"
+      - set(resource.attributes["cost_center"], "CC-1005") where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "notification-worker"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "recommendation-engine"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "recommendation-engine"
+      - set(resource.attributes["service.tier"], "low") where resource.attributes["service.name"] == "batch-etl-job"
+      - set(resource.attributes["team"], "data-platform") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["cost_center"], "CC-2003") where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["compliance_hold"], false) where resource.attributes["service.name"] ==
+        "batch-etl-job"
+      - set(resource.attributes["policy.version"], "7825d426c7ca")
+    - context: metric
+      statements:
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["compliance_hold"]
+        == true
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical" and (IsMatch(metric.name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$"))
+      - set(resource.attributes["telemetry.tier"], "hot") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard" and (IsMatch(metric.name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$"))
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low" and (IsMatch(metric.name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$"))
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "critical"
+      - set(resource.attributes["telemetry.tier"], "warm") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "standard"
+      - set(resource.attributes["telemetry.tier"], "drop") where resource.attributes["telemetry.tier"]
+        == nil and resource.attributes["service.tier"] == "low"
+  filter/drop_logs:
+    error_mode: ignore
+    logs:
+      log_record:
+      - resource.attributes["telemetry.tier"] != "drop"
+  filter/drop_traces:
+    error_mode: ignore
+    traces:
+      span:
+      - resource.attributes["telemetry.tier"] != "drop"
+  filter/drop_metrics:
+    error_mode: ignore
+    metrics:
+      metric:
+      - resource.attributes["telemetry.tier"] != "drop"
+  tail_sampling:
+    decision_wait: 5s
+    policies:
+    - name: always-sample-errors
+      type: status_code
+      status_code:
+        status_codes:
+        - ERROR
+    - name: sample-slow-traces
+      type: latency
+      latency:
+        threshold_ms: 500
+    - name: probabilistic-rest
+      type: probabilistic
+      probabilistic:
+        sampling_percentage: 20
+connectors:
+  routing/logs:
+    default_pipelines:
+    - logs/warm
+    error_mode: ignore
+    table:
+    - statement: route() where resource.attributes["telemetry.tier"] == "hot"
+      pipelines:
+      - logs/hot
+    - statement: route() where resource.attributes["telemetry.tier"] == "warm"
+      pipelines:
+      - logs/warm
+    - statement: route() where resource.attributes["telemetry.tier"] == "drop"
+      pipelines:
+      - logs/drop
+  routing/traces:
+    default_pipelines:
+    - traces/warm
+    error_mode: ignore
+    table:
+    - statement: route() where resource.attributes["telemetry.tier"] == "hot"
+      pipelines:
+      - traces/hot
+    - statement: route() where resource.attributes["telemetry.tier"] == "warm"
+      pipelines:
+      - traces/warm
+    - statement: route() where resource.attributes["telemetry.tier"] == "drop"
+      pipelines:
+      - traces/drop
+  routing/metrics:
+    default_pipelines:
+    - metrics/warm
+    error_mode: ignore
+    table:
+    - statement: route() where resource.attributes["telemetry.tier"] == "hot"
+      pipelines:
+      - metrics/hot
+    - statement: route() where resource.attributes["telemetry.tier"] == "warm"
+      pipelines:
+      - metrics/warm
+    - statement: route() where resource.attributes["telemetry.tier"] == "drop"
+      pipelines:
+      - metrics/drop
+  count/logs_all:
+    logs:
+      logs.count.by_service:
+        description: Contagem de logs roteados, por service/team/cost_center/tier
+        attributes: &id001
+        - key: service.name
+        - key: team
+        - key: cost_center
+        - key: telemetry.tier
+  count/traces_all:
+    spans:
+      spans.count.by_service:
+        description: Contagem de spans roteados, por service/team/cost_center/tier
+        attributes: *id001
+  count/metrics_all:
+    datapoints:
+      datapoints.count.by_service:
+        description: Contagem de datapoints roteados, por service/team/cost_center/tier
+        attributes: *id001
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+  prometheusremotewrite/hot:
+    endpoint: http://prometheus:9090/api/v1/write
+  awss3/warm:
+    s3uploader:
+      region: us-east-1
+      s3_bucket: warm-tier
+      s3_prefix: otel
+      s3_partition: minute
+      endpoint: http://minio:9000
+      s3_force_path_style: true
+      disable_ssl: true
+    marshaler: otlp_json
+  debug/audit:
+    verbosity: basic
+    sampling_initial: 1
+    sampling_thereafter: 1000
+  prometheus/self:
+    endpoint: 0.0.0.0:8889
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+service:
+  extensions:
+  - health_check
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+  pipelines:
+    logs/in:
+      receivers:
+      - otlp
+      processors:
+      - transform/tag_logs
+      exporters:
+      - routing/logs
+    logs/hot:
+      receivers:
+      - routing/logs
+      processors:
+      - batch
+      exporters:
+      - otlphttp/loki
+      - count/logs_all
+    logs/warm:
+      receivers:
+      - routing/logs
+      processors:
+      - batch
+      exporters:
+      - awss3/warm
+      - count/logs_all
+    logs/drop:
+      receivers:
+      - routing/logs
+      processors:
+      - count/logs_all
+      - filter/drop_logs
+      exporters:
+      - debug/audit
+    traces/in:
+      receivers:
+      - otlp
+      processors:
+      - transform/tag_traces
+      exporters:
+      - routing/traces
+    traces/hot:
+      receivers:
+      - routing/traces
+      processors:
+      - tail_sampling
+      - batch
+      exporters:
+      - otlp/tempo
+      - count/traces_all
+    traces/warm:
+      receivers:
+      - routing/traces
+      processors:
+      - batch
+      exporters:
+      - awss3/warm
+      - count/traces_all
+    traces/drop:
+      receivers:
+      - routing/traces
+      processors:
+      - count/traces_all
+      - filter/drop_traces
+      exporters:
+      - debug/audit
+    metrics/in:
+      receivers:
+      - otlp
+      processors:
+      - transform/tag_metrics
+      exporters:
+      - routing/metrics
+    metrics/hot:
+      receivers:
+      - routing/metrics
+      processors:
+      - batch
+      exporters:
+      - prometheusremotewrite/hot
+      - count/metrics_all
+    metrics/warm:
+      receivers:
+      - routing/metrics
+      processors:
+      - batch
+      exporters:
+      - awss3/warm
+      - count/metrics_all
+    metrics/drop:
+      receivers:
+      - routing/metrics
+      processors:
+      - count/metrics_all
+      - filter/drop_metrics
+      exporters:
+      - debug/audit
+    metrics/cost_from_logs:
+      receivers:
+      - count/logs_all
+      processors:
+      - batch
+      exporters:
+      - prometheus/self
+    metrics/cost_from_traces:
+      receivers:
+      - count/traces_all
+      processors:
+      - batch
+      exporters:
+      - prometheus/self
+    metrics/cost_from_metrics:
+      receivers:
+      - count/metrics_all
+      processors:
+      - batch
+      exporters:
+      - prometheus/self

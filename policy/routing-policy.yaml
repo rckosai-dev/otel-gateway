@@ -1,0 +1,59 @@
+# Matriz de decisão de roteamento de telemetria.
+# Avaliada em ORDEM pelo policy-compiler: a primeira regra que casar decide o
+# telemetry.tier de destino (hot | warm | drop). Isso é compilado para
+# expressões OTTL dentro de collector/config/otelcol-config.generated.yaml.
+#
+# Este arquivo é a política legível e auditável; nunca edite o YAML do
+# Collector gerado à mão — mude aqui e rode `make compile-policy`.
+
+version: 1
+
+rules:
+  # 1. Overrides de compliance/retenção legal sempre vencem, para qualquer
+  #    tier de serviço. Nunca pode resultar em drop.
+  - id: compliance-hold-override
+    when:
+      compliance_hold: true
+    decision: warm
+    reason: "Retenção legal/auditoria — nunca descartar, independente de tier ou volume."
+
+  # 2. Sinal de erro/SLO-relevante sobe um nível, mesmo em serviço standard.
+  - id: error-signal-upgrade
+    when:
+      any_of:
+        - log_severity: [ERROR, FATAL]
+        - span_status: ERROR
+        - http_status_gte: 500
+        - metric_is_slo_relevant: true
+    decision_by_tier:
+      critical: hot
+      standard: hot
+      low: warm       # erro em serviço low-tier ainda vale warm, não hot nem drop
+    reason: "Sinal de erro ou SLO-relevante: prioriza diagnosticabilidade sobre custo."
+
+  # 3. Base por tier de criticidade do serviço (do service-catalog.yaml),
+  #    para sinais sem erro/SLO-relevância especial.
+  - id: base-tier-classification
+    when:
+      any_of: [true]   # regra "catch-all" por tier, avaliada após 1 e 2
+    decision_by_tier:
+      critical: warm    # crítico sem erro: warm por padrão (não tudo de crítico é hot)
+      standard: warm
+      low: drop-candidate
+    reason: "Classificação base por criticidade do serviço; erro/SLO já tratado acima."
+
+  # 4. Downgrade dinâmico por pressão de orçamento (ver policy/cost-budget.yaml).
+  #    Avaliado fora do Collector (Prometheus rule expõe over_budget=1 por
+  #    serviço); o policy-compiler injeta esse estado como atributo runtime
+  #    e esta regra força um nível de downgrade adicional quando presente.
+  - id: budget-pressure-downgrade
+    when:
+      over_budget: true
+      log_severity_not_in: [ERROR, FATAL]
+      span_status_not: ERROR
+    decision: downgrade_one_level
+    reason: "Circuit breaker de custo: serviço estourou budget, sinais não-críticos descem um nível até normalizar."
+
+# Default final se nenhuma regra explícita casar (não deveria ocorrer, pois a
+# regra 3 é catch-all, mas serve de rede de segurança).
+default_decision: warm
