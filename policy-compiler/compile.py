@@ -250,18 +250,6 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
             "transform/tag_logs": tag_logs,
             "transform/tag_traces": tag_traces,
             "transform/tag_metrics": tag_metrics,
-            "filter/drop_logs": {
-                "error_mode": "ignore",
-                "logs": {"log_record": ['resource.attributes["telemetry.tier"] != "drop"']},
-            },
-            "filter/drop_traces": {
-                "error_mode": "ignore",
-                "traces": {"span": ['resource.attributes["telemetry.tier"] != "drop"']},
-            },
-            "filter/drop_metrics": {
-                "error_mode": "ignore",
-                "metrics": {"metric": ['resource.attributes["telemetry.tier"] != "drop"']},
-            },
             "tail_sampling": {
                 "decision_wait": "5s",
                 "policies": [
@@ -312,8 +300,8 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
                              "exporters": ["otlphttp/loki", "count/logs_all"]},
                 "logs/warm": {"receivers": ["routing/logs"], "processors": ["batch"],
                               "exporters": ["awss3/warm", "count/logs_all"]},
-                "logs/drop": {"receivers": ["routing/logs"], "processors": ["count/logs_all", "filter/drop_logs"],
-                              "exporters": ["debug/audit"]},
+                "logs/drop": {"receivers": ["routing/logs"], "processors": ["batch"],
+                              "exporters": ["debug/audit", "count/logs_all"]},
 
                 "traces/in": {"receivers": ["otlp"], "processors": ["transform/tag_traces"],
                               "exporters": ["routing/traces"]},
@@ -322,8 +310,8 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
                 "traces/warm": {"receivers": ["routing/traces"], "processors": ["batch"],
                                 "exporters": ["awss3/warm", "count/traces_all"]},
                 "traces/drop": {"receivers": ["routing/traces"],
-                                 "processors": ["count/traces_all", "filter/drop_traces"],
-                                 "exporters": ["debug/audit"]},
+                                 "processors": ["batch"],
+                                 "exporters": ["debug/audit", "count/traces_all"]},
 
                 "metrics/in": {"receivers": ["otlp"], "processors": ["transform/tag_metrics"],
                                "exporters": ["routing/metrics"]},
@@ -332,8 +320,8 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
                 "metrics/warm": {"receivers": ["routing/metrics"], "processors": ["batch"],
                                  "exporters": ["awss3/warm", "count/metrics_all"]},
                 "metrics/drop": {"receivers": ["routing/metrics"],
-                                  "processors": ["count/metrics_all", "filter/drop_metrics"],
-                                  "exporters": ["debug/audit"]},
+                                  "processors": ["batch"],
+                                  "exporters": ["debug/audit", "count/metrics_all"]},
 
                 # Destination pipelines for the count connectors (logs/traces/metrics ->
                 # count metrics by service/team/cost_center/tier). This is the series
