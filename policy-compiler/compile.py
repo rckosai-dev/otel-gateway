@@ -113,14 +113,18 @@ def fetch_over_budget_services(prometheus_url: str) -> set:
 # ---------------------------------------------------------------------------
 
 def build_tagging_statements(catalog: dict) -> list:
+    # These statements run under context: resource (see transform_processor_block),
+    # so paths are relative to the Resource itself: "attributes[...]", NOT
+    # "resource.attributes[...]" — the "resource." prefix is only valid when
+    # reaching the Resource from a different context (log/span/metric).
     statements = []
     for svc in catalog["services"]:
-        cond = f'resource.attributes["service.name"] == "{svc["name"]}"'
-        statements.append(f'set(resource.attributes["service.tier"], "{svc["tier"]}") where {cond}')
-        statements.append(f'set(resource.attributes["team"], "{svc["team"]}") where {cond}')
-        statements.append(f'set(resource.attributes["cost_center"], "{svc["cost_center"]}") where {cond}')
+        cond = f'attributes["service.name"] == "{svc["name"]}"'
+        statements.append(f'set(attributes["service.tier"], "{svc["tier"]}") where {cond}')
+        statements.append(f'set(attributes["team"], "{svc["team"]}") where {cond}')
+        statements.append(f'set(attributes["cost_center"], "{svc["cost_center"]}") where {cond}')
         statements.append(
-            f'set(resource.attributes["compliance_hold"], {str(svc["compliance_hold"]).lower()}) where {cond}'
+            f'set(attributes["compliance_hold"], {str(svc["compliance_hold"]).lower()}) where {cond}'
         )
     return statements
 
@@ -134,7 +138,8 @@ def build_tagging_statements(catalog: dict) -> list:
 SIGNAL_ERROR_CONDITION = {
     "log": 'severity_number >= SEVERITY_NUMBER_ERROR',
     "span": 'status.code == STATUS_CODE_ERROR or attributes["http.status_code"] >= 500',
-    "metric": 'IsMatch(metric.name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$")',
+    # context: metric — the metric's own name is just "name", not "metric.name".
+    "metric": 'IsMatch(name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$")',
 }
 
 BASE_TIER_DECISION = {"critical": "warm", "standard": "warm", "low": "drop"}
@@ -184,15 +189,36 @@ def build_tier_decision_statements(signal: str, over_budget_services: set) -> li
     return stmts
 
 
+
+# countconnector groups counted records by ATTRIBUTES ON THE ITEM ITSELF
+# (LogRecord/Span/DataPoint) — it never reads Resource attributes, and
+# silently drops a named metric entirely for any record missing even one
+# configured attribute key (see connector/countconnector/counter.go
+# "Missing necessary attributes to be counted"). Since service.name/team/
+# cost_center/telemetry.tier are tagged at the Resource level (so the
+# routing/tail_sampling decisions apply per-resource, not per-record), we
+# have to also copy them down onto the item's own attributes so the count
+# connectors can actually see them.
+COST_DIMENSION_KEYS = ("service.name", "team", "cost_center", "telemetry.tier")
+
+
+def build_item_attribute_promotion_statements() -> list:
+    return [f'set(attributes["{key}"], resource.attributes["{key}"])' for key in COST_DIMENSION_KEYS]
+
+
 def transform_processor_block(signal_key: str, statement_group_key: str, tagging_stmts: list,
-                               tier_stmts: list, version: str) -> dict:
+                               tier_stmts: list, version: str, item_context: str) -> dict:
     return {
         "error_mode": "ignore",
         statement_group_key: [
             {"context": "resource", "statements": tagging_stmts + [
-                f'set(resource.attributes["policy.version"], "{version}")'
+                f'set(attributes["policy.version"], "{version}")'
             ]},
             {"context": signal_key, "statements": tier_stmts},
+            # item_context is where LogRecord/Span/DataPoint attributes actually
+            # live — for metrics that's "datapoint", not "metric" (a Metric
+            # object has no attributes map of its own).
+            {"context": item_context, "statements": build_item_attribute_promotion_statements()},
         ],
     }
 
@@ -206,22 +232,28 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
     tagging = build_tagging_statements(catalog)
 
     tag_logs = transform_processor_block("log", "log_statements", tagging,
-                                          build_tier_decision_statements("log", over_budget_services), version)
+                                          build_tier_decision_statements("log", over_budget_services), version,
+                                          item_context="log")
     tag_traces = transform_processor_block("span", "trace_statements", tagging,
-                                            build_tier_decision_statements("span", over_budget_services), version)
+                                            build_tier_decision_statements("span", over_budget_services), version,
+                                            item_context="span")
     tag_metrics = transform_processor_block("metric", "metric_statements", tagging,
-                                             build_tier_decision_statements("metric", over_budget_services), version)
+                                             build_tier_decision_statements("metric", over_budget_services), version,
+                                             item_context="datapoint")
 
     def routing_table(signal_pipeline_prefix: str) -> dict:
+        # routingconnector evaluates table[].statement in the OTTL Resource
+        # context, so paths are "attributes[...]", NOT "resource.attributes[...]"
+        # (same rule as the context: resource block in transform_processor_block).
         return {
             "default_pipelines": [f"{signal_pipeline_prefix}/warm"],
             "error_mode": "ignore",
             "table": [
-                {"statement": 'route() where resource.attributes["telemetry.tier"] == "hot"',
+                {"statement": 'route() where attributes["telemetry.tier"] == "hot"',
                  "pipelines": [f"{signal_pipeline_prefix}/hot"]},
-                {"statement": 'route() where resource.attributes["telemetry.tier"] == "warm"',
+                {"statement": 'route() where attributes["telemetry.tier"] == "warm"',
                  "pipelines": [f"{signal_pipeline_prefix}/warm"]},
-                {"statement": 'route() where resource.attributes["telemetry.tier"] == "drop"',
+                {"statement": 'route() where attributes["telemetry.tier"] == "drop"',
                  "pipelines": [f"{signal_pipeline_prefix}/drop"]},
             ],
         }
