@@ -41,10 +41,14 @@ flow in [`docs/runbook.md`](docs/runbook.md).
 
 ## State of this development environment
 
-This project was built in a sandbox with no Docker daemon available — all
-the logic (policy-compiler, telemetry-generator, OTLP JSON parsing) was
-tested in isolation, and Terraform/docker-compose/JSON syntax was validated
-statically, but the full end-to-end run of the stack via
-`docker-compose.yml` **has not been executed yet**. Run the quickstart
-above locally with Docker available to validate it end to end — see
-[`docs/runbook.md`](docs/runbook.md#known-limitations-of-this-development-environment).
+This project was built in a sandbox with no Docker daemon available, so
+the full `docker-compose.yml` stack (Grafana/Loki/Tempo/Prometheus/MinIO
+together) has not been exercised end to end here. That said, the Collector
+config itself **was** validated against the real thing: the pinned
+`otelcol-contrib` v0.102.1 binary was downloaded and run directly against
+`collector/config/otelcol-config.generated.yaml`, fed real OTLP traffic
+from `telemetry-generator`, and confirmed to route and count correctly
+(see [`docs/runbook.md`](docs/runbook.md#known-limitations-of-this-development-environment)
+for exactly what that did and didn't cover). Run the quickstart above
+locally with Docker available to validate the full stack (Grafana
+dashboards, Loki/Tempo/MinIO actually receiving data, Terraform apply).

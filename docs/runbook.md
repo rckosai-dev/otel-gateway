@@ -93,9 +93,45 @@ using the named queries in `terraform/modules/athena/main.tf`
 ## Known limitations of this development environment
 
 This project was developed in a remote sandbox with no Docker daemon
-available — syntax validation (docker-compose, Terraform via `fmt`,
-Python, dashboard JSON) was done statically, but a full end-to-end run of
-`docker-compose.yml` (bringing up the stack, generating real load,
-confirming data in Grafana/MinIO) **was not executed in this environment**
-and should be validated by whoever runs the project locally with Docker
-available, following the flow above.
+available. What **was** actually validated here, directly against the
+real `otelcol-contrib` v0.102.1 binary (the exact version pinned in
+`docker-compose.yml`), downloaded and run standalone (not via compose):
+
+- `otelcol-contrib validate --config=collector/config/otelcol-config.generated.yaml`
+  passes.
+- Running the binary directly, it builds all pipelines and reaches
+  "Everything is ready" — this is what caught two real OTTL bugs
+  (`resource.attributes[...]` used inside a context that was already
+  `resource`, and `metric.name` instead of `name` inside `context: metric`)
+  that static YAML/schema validation could not have caught, since they're
+  errors in the *content* of OTTL expression strings, not the YAML shape.
+- Feeding it real OTLP traffic from `telemetry-generator` end to end
+  confirmed the routing decision and the cost-showback count connectors:
+  `logs_count_by_service_total`/`spans_count_by_service_total`/
+  `datapoints_count_by_service_total` came out on `:8889` with correct
+  `service_name`/`team`/`cost_center`/`telemetry_tier` labels, and the
+  values matched the routing policy's intent (e.g. `recommendation-engine`
+  and `batch-etl-job` concentrating `telemetry_tier="drop"`;
+  `payment-gateway`/`auth-service`, both `compliance_hold`, never
+  appearing as `drop`). This is also what caught a second real bug: the
+  `countconnector` only reads attributes off the item itself (LogRecord/
+  Span/DataPoint), never off the Resource, and silently drops a named
+  metric entirely if any configured attribute is missing.
+
+What was **not** validated in this environment, and needs a real
+`docker compose up` locally to confirm:
+
+- The full multi-container stack coming up together (network, volumes,
+  healthcheck ordering) — only the Collector binary was run standalone.
+- Data actually landing in Loki/Tempo (the `otlphttp/loki` and
+  `otlp/tempo` exporters only got as far as "backend unreachable," since
+  those containers weren't running in the standalone test).
+- Objects actually landing in MinIO via `awss3/warm`, and the
+  `parquetize.py`/`check-minio-parquet.py` scripts against real objects.
+- The Grafana dashboards actually rendering with real data.
+- `terraform plan`/`apply` against real AWS credentials.
+
+Follow the flow above to validate those; report back anything that still
+breaks — the OTTL and countconnector fixes above were both found this way
+(by actually running the real binary against real traffic, not by
+reading the config), so it's the fastest way to catch anything left.
