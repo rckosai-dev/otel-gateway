@@ -1,0 +1,53 @@
+# Synthetic load profile per service. Names MUST match
+# policy/service-catalog.yaml (same "service.name") — that's what makes
+# routing by value make sense end to end in the demo.
+services:
+  - name: checkout-api
+    error_rate: 0.05
+    log_volume_per_min: 200
+    trace_volume_per_min: 120
+    emits_slo_metrics: true
+
+  - name: payment-gateway
+    error_rate: 0.02
+    log_volume_per_min: 150
+    trace_volume_per_min: 100
+    emits_slo_metrics: true
+
+  - name: auth-service
+    error_rate: 0.01
+    log_volume_per_min: 80
+    trace_volume_per_min: 60
+    emits_slo_metrics: true
+
+  - name: inventory-service
+    error_rate: 0.01
+    log_volume_per_min: 100
+    trace_volume_per_min: 70
+    emits_slo_metrics: false
+
+  - name: frontend-bff
+    error_rate: 0.015
+    log_volume_per_min: 180
+    trace_volume_per_min: 150
+    emits_slo_metrics: false
+
+  - name: notification-worker
+    error_rate: 0.03
+    log_volume_per_min: 300
+    trace_volume_per_min: 50
+    emits_slo_metrics: false
+
+  # Natural "drop" candidates: high volume, low criticality (tier=low
+  # in service-catalog.yaml), mostly DEBUG/INFO with no error.
+  - name: recommendation-engine
+    error_rate: 0.005
+    log_volume_per_min: 800
+    trace_volume_per_min: 400
+    emits_slo_metrics: false
+
+  - name: batch-etl-job
+    error_rate: 0.02
+    log_volume_per_min: 900
+    trace_volume_per_min: 30
+    emits_slo_metrics: false

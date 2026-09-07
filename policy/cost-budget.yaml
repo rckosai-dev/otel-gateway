@@ -1,0 +1,29 @@
+# Per-service volume budgets, used by the "budget-pressure-downgrade" rule
+# in routing-policy.yaml. When volume over the last `window` exceeds
+# `budget_gb`, the service is flagged over_budget=1 (via a Prometheus
+# recording rule in prometheus/rules/cost-rules.yaml) and non-critical
+# signals from that service drop one tier until it normalizes.
+#
+# This is the "cost-aware sampling"/cost circuit breaker mechanism: the
+# routing policy reacts to real volume pressure, not just static
+# criticality rules.
+
+window: 1h
+
+budgets:
+  - service: checkout-api
+    budget_gb: 5
+  - service: payment-gateway
+    budget_gb: 3
+  - service: auth-service
+    budget_gb: 2
+  - service: inventory-service
+    budget_gb: 4
+  - service: frontend-bff
+    budget_gb: 6
+  - service: notification-worker
+    budget_gb: 2
+  - service: recommendation-engine
+    budget_gb: 1.5   # natural candidate to exceed it — high volume, low tier
+  - service: batch-etl-job
+    budget_gb: 1     # same — DEBUG logs from ETL

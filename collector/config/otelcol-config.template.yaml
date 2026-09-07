@@ -1,0 +1,21 @@
+# Human-readable reference for the SHAPE of the generated config — not
+# consumed by the Collector nor by the policy-compiler. The compiler
+# (policy-compiler/compile.py) builds the final YAML programmatically from
+# policy/*.yaml and writes the result to otelcol-config.generated.yaml.
+# Never hand-edit the .generated.yaml: change the policy in policy/ and run
+# `make compile-policy`.
+#
+# General shape (one block per signal: logs, traces, metrics):
+#
+#   receivers.otlp                        -> single entry point (Agent Collectors)
+#   processors.transform/tag_<signal>     -> tags service.tier/team/cost_center
+#                                             + decides telemetry.tier (OTTL, generated)
+#   connectors.routing/<signal>           -> routes by telemetry.tier (hot/warm/drop)
+#   connectors.count/<signal>_<tier>      -> counts by service.name/team/cost_center
+#                                             (feeds the cost showback)
+#   processors.filter/drop_<signal>       -> actually discards the "drop" branch after counting
+#   exporters (hot)                       -> otlp/tempo, otlphttp/loki, prometheusremotewrite
+#   exporters (warm)                      -> awss3/warm (local MinIO / real AWS S3)
+#   exporters (drop)                      -> no real data, only sampled debug/audit
+#
+# service.telemetry.metrics exposes the Collector's own self-telemetry on :8888/metrics.

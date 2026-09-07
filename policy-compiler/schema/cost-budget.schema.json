@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cost-budget",
+  "type": "object",
+  "required": ["window", "budgets"],
+  "additionalProperties": false,
+  "properties": {
+    "window": {"type": "string", "pattern": "^[0-9]+[smh]$"},
+    "budgets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["service", "budget_gb"],
+        "additionalProperties": false,
+        "properties": {
+          "service": {"type": "string", "minLength": 1},
+          "budget_gb": {"type": "number", "exclusiveMinimum": 0}
+        }
+      }
+    }
+  }
+}

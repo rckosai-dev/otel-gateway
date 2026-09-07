@@ -1,0 +1,52 @@
+# Service catalog — source of truth for criticality classification.
+# Owned by the platform/observability team; product teams only propose
+# changes via PR.
+#
+# tier:
+#   critical  -> Tier-0/1: direct impact on revenue/external SLA
+#   standard  -> Tier-2: operational impact, no direct external SLA
+#   low       -> Tier-3: batch, internal jobs, low diagnostic value
+#
+# compliance_hold: true forces a minimum warm-tier retention regardless of
+# tier/volume (audit, regulated data) — can never be "drop".
+services:
+  - name: checkout-api
+    tier: critical
+    team: payments
+    cost_center: CC-1001
+    compliance_hold: false
+  - name: payment-gateway
+    tier: critical
+    team: payments
+    cost_center: CC-1001
+    compliance_hold: true
+  - name: auth-service
+    tier: critical
+    team: identity
+    cost_center: CC-1002
+    compliance_hold: true
+  - name: inventory-service
+    tier: standard
+    team: catalog
+    cost_center: CC-1003
+    compliance_hold: false
+  - name: frontend-bff
+    tier: standard
+    team: web
+    cost_center: CC-1004
+    compliance_hold: false
+  - name: notification-worker
+    tier: low
+    team: growth
+    cost_center: CC-1005
+    compliance_hold: false
+  - name: recommendation-engine
+    tier: low
+    team: data-platform
+    cost_center: CC-2003
+    compliance_hold: false
+  - name: batch-etl-job
+    tier: low
+    team: data-platform
+    cost_center: CC-2003
+    compliance_hold: false

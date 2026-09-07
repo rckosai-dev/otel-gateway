@@ -1,0 +1,60 @@
+# Telemetry routing decision matrix.
+# Evaluated IN ORDER by the policy-compiler: the first rule that matches
+# decides the target telemetry.tier (hot | warm | drop). This is compiled
+# into OTTL expressions inside collector/config/otelcol-config.generated.yaml.
+#
+# This file is the readable, auditable policy; never hand-edit the
+# generated Collector YAML — change it here and run `make compile-policy`.
+
+version: 1
+
+rules:
+  # 1. Compliance/legal-retention overrides always win, for any service
+  #    tier. Can never result in a drop.
+  - id: compliance-hold-override
+    when:
+      compliance_hold: true
+    decision: warm
+    reason: "Legal retention/audit — never discard, regardless of tier or volume."
+
+  # 2. An error/SLO-relevant signal moves up one tier, even for a standard service.
+  - id: error-signal-upgrade
+    when:
+      any_of:
+        - log_severity: [ERROR, FATAL]
+        - span_status: ERROR
+        - http_status_gte: 500
+        - metric_is_slo_relevant: true
+    decision_by_tier:
+      critical: hot
+      standard: hot
+      low: warm       # an error on a low-tier service still gets warm, not hot or drop
+    reason: "Error or SLO-relevant signal: prioritizes diagnosability over cost."
+
+  # 3. Base classification by service criticality tier (from
+  #    service-catalog.yaml), for signals with no error/special SLO relevance.
+  - id: base-tier-classification
+    when:
+      any_of: [true]   # "catch-all" rule by tier, evaluated after 1 and 2
+    decision_by_tier:
+      critical: warm    # critical without error: warm by default (not everything critical is hot)
+      standard: warm
+      low: drop-candidate
+    reason: "Base classification by service criticality; error/SLO already handled above."
+
+  # 4. Dynamic downgrade under budget pressure (see policy/cost-budget.yaml).
+  #    Evaluated outside the Collector (a Prometheus rule exposes
+  #    over_budget=1 per service); the policy-compiler injects this state
+  #    as a runtime attribute and this rule forces an extra downgrade level
+  #    when present.
+  - id: budget-pressure-downgrade
+    when:
+      over_budget: true
+      log_severity_not_in: [ERROR, FATAL]
+      span_status_not: ERROR
+    decision: downgrade_one_level
+    reason: "Cost circuit breaker: the service exceeded its budget, non-critical signals drop one tier until it normalizes."
+
+# Final default if no explicit rule matches (shouldn't happen, since rule 3
+# is a catch-all, but serves as a safety net).
+default_decision: warm

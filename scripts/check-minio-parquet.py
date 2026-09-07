@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Validates the output of parquetize.py: lists Parquet objects under
+`processed/` in the warm-tier bucket, downloads one, and prints its schema +
+row count — step 5 of the end-to-end validation checklist."""
+import argparse
+import io
+
+import boto3
+import pyarrow.parquet as pq
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--endpoint-url", default="http://localhost:9000")
+    parser.add_argument("--bucket", default="warm-tier")
+    parser.add_argument("--prefix", default="processed/")
+    args = parser.parse_args()
+
+    s3 = boto3.client("s3", endpoint_url=args.endpoint_url)
+    resp = s3.list_objects_v2(Bucket=args.bucket, Prefix=args.prefix)
+    objects = resp.get("Contents", [])
+
+    if not objects:
+        print(f"[check-minio-parquet] no objects found under "
+              f"s3://{args.bucket}/{args.prefix} — run `python3 scripts/parquetize.py` first.")
+        raise SystemExit(1)
+
+    print(f"[check-minio-parquet] {len(objects)} Parquet file(s) found.")
+    sample_key = objects[0]["Key"]
+    body = s3.get_object(Bucket=args.bucket, Key=sample_key)["Body"].read()
+    table = pq.read_table(io.BytesIO(body))
+
+    print(f"[check-minio-parquet] sample: {sample_key}")
+    print(f"[check-minio-parquet] schema:\n{table.schema}")
+    print(f"[check-minio-parquet] rows: {table.num_rows}")
+
+
+if __name__ == "__main__":
+    main()
