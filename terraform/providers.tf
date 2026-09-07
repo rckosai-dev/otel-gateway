@@ -8,8 +8,8 @@ terraform {
     }
   }
 
-  # Backend local por padrão (adequado para `terraform plan`/`validate` no
-  # sandbox de demo). Em produção, trocar para backend remoto com locking:
+  # Local backend by default (fine for `terraform plan`/`validate` in the
+  # demo sandbox). In production, switch to a remote backend with locking:
   #
   # backend "s3" {
   #   bucket         = "otel-cost-gov-tfstate"

@@ -1,8 +1,8 @@
-# ARNs de bucket S3 são deriváveis diretamente do nome (sem sufixo aleatório),
-# então computamos aqui como locals em vez de depender de outputs de módulo —
-# isso quebra a dependência circular entre o módulo IAM (que precisa do ARN
-# do bucket para a policy de escrita) e o módulo s3-warm-tier (que precisa do
-# ARN da role IAM para a bucket policy).
+# S3 bucket ARNs are derivable directly from the name (no random suffix),
+# so we compute them here as locals instead of depending on module outputs
+# — this breaks the circular dependency between the IAM module (which needs
+# the bucket ARN for the write policy) and the s3-warm-tier module (which
+# needs the IAM role ARN for the bucket policy).
 locals {
   warm_tier_bucket_arn      = "arn:aws:s3:::${var.warm_tier_bucket_name}"
   athena_results_bucket_arn = "arn:aws:s3:::${var.athena_results_bucket_name}"
@@ -39,7 +39,7 @@ resource "aws_s3_bucket_public_access_block" "athena_results" {
 module "glue_catalog" {
   source = "./modules/glue-catalog"
 
-  # Nomes de database Glue não aceitam hífen — normaliza o nome do ambiente.
+  # Glue database names don't accept hyphens — normalize the environment name.
   database_name       = "otel_cost_governance_${replace(var.environment, "-", "_")}"
   warm_tier_bucket_id = module.warm_tier.bucket_id
 }

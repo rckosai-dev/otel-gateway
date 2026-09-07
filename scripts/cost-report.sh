@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Snapshot rápido de custo/saving via API do Prometheus, sem precisar abrir o
-# Grafana — útil para colar números no artigo/PR.
+# Quick cost/saving snapshot via the Prometheus API, no need to open
+# Grafana — handy for pasting numbers into the article/PR.
 set -euo pipefail
 
 PROM_URL="${PROM_URL:-http://localhost:9090}"
@@ -16,17 +16,17 @@ for r in data.get('data', {}).get('result', []):
 "
 }
 
-echo "== Custo residual por serviço/tier (USD) =="
+echo "== Residual cost by service/tier (USD) =="
 query 'cost:residual_usd:by_service_tier'
 
 echo
-echo "== Economia por downgrade hot->warm (USD) =="
+echo "== Downgrade saving hot->warm (USD) =="
 query 'cost:downgrade_saving_usd:by_service'
 
 echo
-echo "== Economia por drop (USD) =="
+echo "== Drop saving (USD) =="
 query 'cost:drop_saving_usd:by_service'
 
 echo
-echo "== Serviços atualmente over-budget =="
+echo "== Services currently over budget =="
 query 'policy:over_budget:by_service == 1'

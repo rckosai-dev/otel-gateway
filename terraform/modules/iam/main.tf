@@ -1,10 +1,10 @@
-# Duas identidades separadas por princípio de menor privilégio:
-#   - otel-gateway-collector: só escreve no warm tier (nunca lê, nunca lista)
-#   - otel-cost-governance-reader: só lê/consulta (times de produto consultando
-#     seus próprios dados via Athena) — nunca escreve
+# Two identities, separated by the least-privilege principle:
+#   - otel-gateway-collector: write-only to the warm tier (never reads, never lists)
+#   - otel-cost-governance-reader: read/query only (product teams querying
+#     their own data via Athena) — never writes
 #
-# Trust policy abaixo é um placeholder genérico (assume-role via conta atual).
-# Em produção com EKS, isto seria IRSA:
+# The trust policy below is a generic placeholder (assume-role via the
+# current account). In production with EKS, this would be IRSA:
 #
 # data "aws_iam_policy_document" "collector_trust_irsa" {
 #   statement {
@@ -28,7 +28,7 @@ data "aws_iam_policy_document" "collector_trust" {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::*:root"] # placeholder — restringir à conta real em produção
+      identifiers = ["arn:aws:iam::*:root"] # placeholder — restrict to the real account in production
     }
   }
 }

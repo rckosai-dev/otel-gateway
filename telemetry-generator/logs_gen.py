@@ -1,6 +1,6 @@
-"""Emissão de logs sintéticos via OTLP, com severidade variável por
-service.error_rate — é essa variação que faz a regra "error-signal-upgrade"
-da política de roteamento (policy/routing-policy.yaml) ter efeito real."""
+"""Synthetic log emission via OTLP, with severity varying by
+service.error_rate — that variation is what makes the "error-signal-upgrade"
+rule in the routing policy (policy/routing-policy.yaml) actually kick in."""
 import logging
 import random
 
@@ -28,10 +28,11 @@ _ERROR_MESSAGES = [
 
 
 def build_logger(service_name: str, otlp_endpoint: str) -> logging.Logger:
-    # logger_provider=provider abaixo usa o provider LOCAL diretamente (não
-    # o registro global _logs.set_logger_provider), pela mesma razão descrita
-    # em traces_gen.build_tracer/metrics_gen.build_meter: um provider global
-    # por processo quebraria o resource dos demais serviços da carga.
+    # logger_provider=provider below uses the LOCAL provider directly (not
+    # the global _logs.set_logger_provider registry), for the same reason
+    # described in traces_gen.build_tracer/metrics_gen.build_meter: a
+    # process-wide global provider would break the resource for the other
+    # services in the load.
     resource = Resource.create({"service.name": service_name})
     provider = LoggerProvider(resource=resource)
     exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)

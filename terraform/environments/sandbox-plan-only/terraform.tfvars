@@ -1,7 +1,7 @@
-# Valores de exemplo/fake — usados só para `terraform validate`/`terraform fmt`
-# neste ambiente de demo. NUNCA rode `terraform apply` com estes valores:
-# não há credenciais AWS configuradas no sandbox, e os nomes de bucket abaixo
-# não são reservados nem exclusivos.
+# Example/fake values — used only for `terraform validate`/`terraform fmt`
+# in this demo environment. NEVER run `terraform apply` with these values:
+# there are no AWS credentials configured in the sandbox, and the bucket
+# names below are neither reserved nor exclusive.
 
 environment                = "sandbox-plan-only"
 region                     = "ap-northeast-1"

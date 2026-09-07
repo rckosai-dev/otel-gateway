@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-Policy compiler: compila policy/service-catalog.yaml + policy/routing-policy.yaml
-(+ opcionalmente um sinal de over-budget vindo do Prometheus, ver policy/cost-budget.yaml)
-em collector/config/otelcol-config.generated.yaml — a config real do OTel Collector
-Gateway.
+Policy compiler: compiles policy/service-catalog.yaml + policy/routing-policy.yaml
+(+ optionally an over-budget signal from Prometheus, see policy/cost-budget.yaml)
+into collector/config/otelcol-config.generated.yaml — the real config of the
+OTel Gateway Collector.
 
-Isto é o plano de controle do projeto: a política de roteamento (o "o quê" e o
-"porquê") vive em YAML legível e auditável em policy/; este script traduz para
-OTTL/config do Collector (o "como"), de forma determinística e reprodutível.
-Nunca edite otelcol-config.generated.yaml à mão.
+This is the project's control plane: the routing policy (the "what" and the
+"why") lives in readable, auditable YAML under policy/; this script
+translates it into Collector OTTL/config (the "how"), deterministically and
+reproducibly. Never hand-edit otelcol-config.generated.yaml.
 
-Uso:
+Usage:
     python3 policy-compiler/compile.py
     python3 policy-compiler/compile.py --prometheus-url http://localhost:9090
 
-O flag --prometheus-url é o "poor-man's OpAMP" do demo: consulta a recording
-rule policy:over_budget:by_service e, para serviços marcados over_budget=1,
-injeta um downgrade explícito de tier (regra budget-pressure-downgrade). Em
-produção isso seria substituído por push dinâmico via OpAMP para a frota de
-Gateway Collectors, sem precisar recompilar+reiniciar — ver docs/architecture.md.
+The --prometheus-url flag is the demo's "poor man's OpAMP": it queries the
+policy:over_budget:by_service recording rule and, for services flagged
+over_budget=1, injects an explicit tier downgrade (budget-pressure-downgrade
+rule). In production this would be replaced by a dynamic push via OpAMP to
+the Gateway Collector fleet, with no need to recompile+restart — see
+docs/architecture.md.
 """
 import argparse
 import copy
@@ -38,12 +39,12 @@ SCHEMA_DIR = Path(__file__).resolve().parent / "schema"
 OUTPUT_PATH = REPO_ROOT / "collector" / "config" / "otelcol-config.generated.yaml"
 PROMETHEUS_RULES_PATH = REPO_ROOT / "prometheus" / "rules" / "cost-rules.generated.yaml"
 
-TIER_DOWNGRADE = {"hot": "warm", "warm": "drop"}  # "drop" não desce mais
+TIER_DOWNGRADE = {"hot": "warm", "warm": "drop"}  # "drop" never goes lower
 
-# Estimativas de tamanho médio por registro, usadas para converter contagem
-# (o que o countconnector realmente mede) em GB estimado. Documentado
-# explicitamente como aproximação em docs/cost-model.md — não é medição
-# exata de bytes de rede/disco.
+# Average size-per-record estimates, used to convert a count (what the
+# countconnector actually measures) into an estimated GB. Explicitly
+# documented as an approximation in docs/cost-model.md — not an exact
+# measurement of network/disk bytes.
 BYTES_PER_RECORD = {
     "logs": 256,
     "spans": 512,
@@ -66,12 +67,12 @@ def validate_policies(catalog: dict, routing: dict, budget: dict) -> None:
 
     names = [s["name"] for s in catalog["services"]]
     if len(names) != len(set(names)):
-        raise ValueError("service-catalog.yaml: nomes de serviço duplicados")
+        raise ValueError("service-catalog.yaml: duplicate service names")
 
     budget_services = {b["service"] for b in budget["budgets"]}
     missing = set(names) - budget_services
     if missing:
-        raise ValueError(f"cost-budget.yaml: serviços sem budget definido: {sorted(missing)}")
+        raise ValueError(f"cost-budget.yaml: services with no budget defined: {sorted(missing)}")
 
 
 def load_yaml_json(path: Path) -> dict:
@@ -80,9 +81,9 @@ def load_yaml_json(path: Path) -> dict:
 
 
 def policy_version(catalog: dict, routing: dict, budget: dict) -> str:
-    """Hash determinístico da política ativa — vira o atributo policy.version
-    anexado a todo sinal roteado, para auditoria (\"sob qual política este
-    dado foi classificado\")."""
+    """Deterministic hash of the active policy — becomes the policy.version
+    attribute attached to every routed signal, for auditing ("under which
+    policy was this data classified")."""
     blob = json.dumps([catalog, routing, budget], sort_keys=True).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()[:12]
 
@@ -94,8 +95,8 @@ def fetch_over_budget_services(prometheus_url: str) -> set:
         with urllib.request.urlopen(url, timeout=5) as resp:
             data = json.loads(resp.read())
     except (urllib.error.URLError, TimeoutError) as exc:
-        print(f"[policy-compiler] aviso: não foi possível consultar Prometheus ({exc}); "
-              f"downgrade dinâmico de budget NÃO aplicado nesta compilação.", file=sys.stderr)
+        print(f"[policy-compiler] warning: could not query Prometheus ({exc}); "
+              f"dynamic budget downgrade NOT applied in this compilation.", file=sys.stderr)
         return set()
 
     services = set()
@@ -108,7 +109,7 @@ def fetch_over_budget_services(prometheus_url: str) -> set:
 
 # ---------------------------------------------------------------------------
 # Tagging: resource.attributes["service.tier"/"team"/"cost_center"/"compliance_hold"]
-# a partir do service-catalog, aplicado igualmente a logs/traces/metrics.
+# from the service catalog, applied equally to logs/traces/metrics.
 # ---------------------------------------------------------------------------
 
 def build_tagging_statements(catalog: dict) -> list:
@@ -125,9 +126,9 @@ def build_tagging_statements(catalog: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Decisão de telemetry.tier — emula "primeira regra que casa decide" via
-# guards de resource.attributes["telemetry.tier"] == nil entre etapas, já que
-# OTTL não tem if/elif nativo.
+# telemetry.tier decision — emulates "first matching rule wins" via
+# resource.attributes["telemetry.tier"] == nil guards between steps, since
+# OTTL has no native if/elif.
 # ---------------------------------------------------------------------------
 
 SIGNAL_ERROR_CONDITION = {
@@ -144,13 +145,13 @@ def build_tier_decision_statements(signal: str, over_budget_services: set) -> li
     error_cond = SIGNAL_ERROR_CONDITION[signal]
     stmts = []
 
-    # 1. Compliance override — sempre warm, tem prioridade sobre tudo.
+    # 1. Compliance override — always warm, takes priority over everything.
     stmts.append(
         'set(resource.attributes["telemetry.tier"], "warm") '
         'where resource.attributes["compliance_hold"] == true'
     )
 
-    # 2. Erro/SLO-relevante sobe de nível (só se não decidido pela regra 1).
+    # 2. Error/SLO-relevant signal moves up a level (only if not already decided by rule 1).
     for tier, decision in ERROR_UPGRADE_DECISION.items():
         stmts.append(
             f'set(resource.attributes["telemetry.tier"], "{decision}") '
@@ -159,7 +160,7 @@ def build_tier_decision_statements(signal: str, over_budget_services: set) -> li
             f'and ({error_cond})'
         )
 
-    # 3. Base por tier de criticidade (catch-all, só se ainda não decidido).
+    # 3. Base classification by criticality tier (catch-all, only if not yet decided).
     for tier, decision in BASE_TIER_DECISION.items():
         stmts.append(
             f'set(resource.attributes["telemetry.tier"], "{decision}") '
@@ -167,9 +168,9 @@ def build_tier_decision_statements(signal: str, over_budget_services: set) -> li
             f'and resource.attributes["service.tier"] == "{tier}"'
         )
 
-    # 4. Downgrade dinâmico por pressão de orçamento (poor-man's OpAMP): só
-    #    aplicado a serviços marcados over_budget nesta compilação, e nunca a
-    #    sinais de erro (diagnosticabilidade sempre vence custo).
+    # 4. Dynamic downgrade under budget pressure (poor man's OpAMP): only
+    #    applied to services flagged over_budget in this compilation, and
+    #    never to error signals (diagnosability always beats cost).
     for service in sorted(over_budget_services):
         svc_cond = f'resource.attributes["service.name"] == "{service}"'
         for from_tier, to_tier in TIER_DOWNGRADE.items():
@@ -197,7 +198,7 @@ def transform_processor_block(signal_key: str, statement_group_key: str, tagging
 
 
 # ---------------------------------------------------------------------------
-# Skeleton estático do Collector (receivers/exporters/extensions/pipelines).
+# Static Collector skeleton (receivers/exporters/extensions/pipelines).
 # ---------------------------------------------------------------------------
 
 def build_config(catalog: dict, routing: dict, budget: dict, version: str,
@@ -228,10 +229,10 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
     cost_dimensions = [{"key": k} for k in ("service.name", "team", "cost_center", "telemetry.tier")]
 
     def count_connector(signal_key: str, metric_name: str) -> dict:
-        # Schema real do countconnector (contrib): top-level "spans"/"logs"/"datapoints",
-        # cada um mapeando nome-de-métrica -> {description, attributes}.
+        # Real countconnector (contrib) schema: top-level "spans"/"logs"/"datapoints",
+        # each mapping a metric name -> {description, attributes}.
         return {signal_key: {metric_name: {
-            "description": f"Contagem de {signal_key} roteados, por service/team/cost_center/tier",
+            "description": f"Count of routed {signal_key}, by service/team/cost_center/tier",
             "attributes": cost_dimensions,
         }}}
 
@@ -334,9 +335,9 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
                                   "processors": ["count/metrics_all", "filter/drop_metrics"],
                                   "exporters": ["debug/audit"]},
 
-                # Pipelines de destino dos count connectors (logs/traces/metrics ->
-                # métricas de contagem por service/team/cost_center/tier). É esta
-                # série que alimenta o showback de custo (seção 4 do plano).
+                # Destination pipelines for the count connectors (logs/traces/metrics ->
+                # count metrics by service/team/cost_center/tier). This is the series
+                # that feeds the cost showback (see docs/cost-model.md).
                 "metrics/cost_from_logs": {"receivers": ["count/logs_all"], "processors": ["batch"],
                                            "exporters": ["prometheus/self"]},
                 "metrics/cost_from_traces": {"receivers": ["count/traces_all"], "processors": ["batch"],
@@ -350,23 +351,23 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
 
 
 def build_prometheus_rules(budget: dict, cost_per_gb_hot: float, cost_per_gb_warm: float) -> dict:
-    """Recording rules derivadas da mesma política:
-    - policy:volume_gb:by_service_tier  -> volume estimado (GB) por service/team/cost_center/tier
-    - policy:volume_gb:by_service       -> agregado por serviço, comparado ao budget_gb
-    - policy:over_budget:by_service     -> 1/0 por serviço, consumido por compile.py --prometheus-url
-    - cost:downgrade_saving_usd:*       -> economia por reclassificar hot->warm
-    - cost:drop_saving_usd:*            -> economia por descartar (branch drop)
-    - cost:residual_usd:*               -> custo ainda pago (hot+warm)
+    """Recording rules derived from the same policy:
+    - policy:volume_gb:by_service_tier  -> estimated volume (GB) by service/team/cost_center/tier
+    - policy:volume_gb:by_service       -> aggregated by service, compared against budget_gb
+    - policy:over_budget:by_service     -> 1/0 per service, consumed by compile.py --prometheus-url
+    - cost:downgrade_saving_usd:*       -> saving from reclassifying hot->warm
+    - cost:drop_saving_usd:*            -> saving from discarding (drop branch)
+    - cost:residual_usd:*               -> cost still being paid (hot+warm)
 
-    Aproximação documentada: volume em GB é estimado por contagem de
-    registros x tamanho médio por tipo de sinal (BYTES_PER_RECORD), não por
-    medição exata de bytes de rede/disco — ver docs/cost-model.md.
+    Documented approximation: volume in GB is estimated from record counts
+    x an average size per signal type (BYTES_PER_RECORD), not from an exact
+    measurement of network/disk bytes — see docs/cost-model.md.
     """
-    # Nota: soma direta assume que os três count connectors compartilham o
-    # mesmo conjunto de labels (service_name/team/cost_center/telemetry_tier)
-    # — verdade nesta config, pois usam os mesmos cost_dimensions. Uma série
-    # só aparece quando pelo menos um sinal daquele tipo já foi emitido; isso
-    # é aceitável para o demo (ver docs/cost-model.md).
+    # Note: direct addition assumes the three count connectors share the
+    # same label set (service_name/team/cost_center/telemetry_tier) — true
+    # in this config, since they use the same cost_dimensions. A series
+    # only appears once at least one signal of that type has been emitted;
+    # that's acceptable for the demo (see docs/cost-model.md).
     volume_expr = (
         "(\n"
         f"    logs_count_by_service_total * {BYTES_PER_RECORD['logs']}\n"
@@ -401,14 +402,14 @@ def build_prometheus_rules(budget: dict, cost_per_gb_hot: float, cost_per_gb_war
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prometheus-url", default=None,
-                         help="Se dado, consulta policy:over_budget:by_service e aplica "
-                              "downgrade dinâmico de tier para serviços over-budget.")
+                         help="If given, queries policy:over_budget:by_service and applies "
+                              "a dynamic tier downgrade to over-budget services.")
     parser.add_argument("--output", default=str(OUTPUT_PATH))
     parser.add_argument("--prometheus-rules-output", default=str(PROMETHEUS_RULES_PATH))
     parser.add_argument("--cost-per-gb-hot", type=float, default=DEFAULT_COST_PER_GB_HOT,
-                         help="Deve espelhar COST_PER_GB_HOT do .env")
+                         help="Should mirror COST_PER_GB_HOT from .env")
     parser.add_argument("--cost-per-gb-warm", type=float, default=DEFAULT_COST_PER_GB_WARM,
-                         help="Deve espelhar COST_PER_GB_WARM do .env")
+                         help="Should mirror COST_PER_GB_WARM from .env")
     args = parser.parse_args()
 
     catalog = load_yaml(POLICY_DIR / "service-catalog.yaml")
@@ -422,17 +423,17 @@ def main():
     if args.prometheus_url:
         over_budget_services = fetch_over_budget_services(args.prometheus_url)
         if over_budget_services:
-            print(f"[policy-compiler] downgrade dinâmico aplicado a: {sorted(over_budget_services)}")
+            print(f"[policy-compiler] dynamic downgrade applied to: {sorted(over_budget_services)}")
 
     config = build_config(catalog, routing, budget, version, over_budget_services)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     header = (
-        "# GERADO AUTOMATICAMENTE por policy-compiler/compile.py — NÃO EDITE À MÃO.\n"
+        "# AUTO-GENERATED by policy-compiler/compile.py — DO NOT HAND-EDIT.\n"
         f"# policy.version={version}\n"
-        f"# Fonte: policy/service-catalog.yaml, policy/routing-policy.yaml, policy/cost-budget.yaml\n"
-        f"# Downgrade dinâmico aplicado nesta compilação: {sorted(over_budget_services) or 'nenhum'}\n\n"
+        f"# Source: policy/service-catalog.yaml, policy/routing-policy.yaml, policy/cost-budget.yaml\n"
+        f"# Dynamic downgrade applied in this compilation: {sorted(over_budget_services) or 'none'}\n\n"
     )
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(header)
@@ -444,7 +445,7 @@ def main():
     rules_path = Path(args.prometheus_rules_output)
     rules_path.parent.mkdir(parents=True, exist_ok=True)
     rules_header = (
-        "# GERADO AUTOMATICAMENTE por policy-compiler/compile.py — NÃO EDITE À MÃO.\n"
+        "# AUTO-GENERATED by policy-compiler/compile.py — DO NOT HAND-EDIT.\n"
         f"# policy.version={version}  cost_per_gb_hot={args.cost_per_gb_hot}  "
         f"cost_per_gb_warm={args.cost_per_gb_warm}\n\n"
     )

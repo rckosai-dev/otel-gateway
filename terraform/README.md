@@ -1,21 +1,22 @@
-# Terraform — retenção como código
+# Terraform — retention as code
 
-Este diretório descreve a infraestrutura real de produção do warm tier
-(S3 + Glue + Athena + IAM), a mesma arquitetura que o `docker-compose.yml`
-simula localmente com MinIO. **Não é aplicado neste repositório/sandbox.**
+This directory describes the real production infrastructure for the warm
+tier (S3 + Glue + Athena + IAM) — the same architecture that
+`docker-compose.yml` simulates locally with MinIO. **It is not applied in
+this repository/sandbox.**
 
-## O que roda aqui, e o que não roda
+## What runs here, and what doesn't
 
-| Comando | Roda no sandbox de demo? | Requer credenciais AWS reais? |
+| Command | Runs in the demo sandbox? | Requires real AWS credentials? |
 |---|---|---|
-| `terraform fmt -check -recursive` | Sim | Não |
-| `terraform init -backend=false` | Sim | Não |
-| `terraform validate` | Sim | Não |
-| `terraform plan` | Não (sem credenciais no ambiente) | Sim |
-| `terraform apply` | **Nunca aqui** | Sim |
+| `terraform fmt -check -recursive` | Yes | No |
+| `terraform init -backend=false` | Yes | No |
+| `terraform validate` | Yes | No |
+| `terraform plan` | No (no credentials in the environment) | Yes |
+| `terraform apply` | **Never here** | Yes |
 
-`make validate-terraform` (raiz do repo) roda os três primeiros. Para rodar
-`plan`/`apply` de verdade, use suas próprias credenciais AWS localmente:
+`make validate-terraform` (repo root) runs the first three. To actually run
+`plan`/`apply`, use your own AWS credentials locally:
 
 ```bash
 cd terraform
@@ -23,30 +24,30 @@ terraform init
 terraform plan -var-file=environments/sandbox-plan-only/terraform.tfvars
 ```
 
-## Por que os nomes de bucket em `environments/sandbox-plan-only/` são "fake"
+## Why the bucket names in `environments/sandbox-plan-only/` are "fake"
 
-Nomes de bucket S3 são globalmente únicos. Os valores em
-`terraform.tfvars` são só placeholders para validação de sintaxe — troque
-por nomes reais (e prováveis nomes já reservados por outra conta) antes de
-rodar `plan`/`apply` de verdade.
+S3 bucket names are globally unique. The values in `terraform.tfvars` are
+just placeholders for syntax validation — replace them with real names
+(likely already reserved by another account) before running a real
+`plan`/`apply`.
 
-## Como isso se conecta ao resto do projeto
+## How this connects to the rest of the project
 
-- `modules/s3-warm-tier`: o mesmo bucket que o `awss3exporter` do Collector
-  escreve localmente no MinIO (`docker-compose.yml`), aqui como S3 real.
-- `modules/glue-catalog` + `modules/athena`: schema e queries de exemplo
-  para o mesmo padrão de consulta validado localmente com `duckdb`
-  (ver `scripts/check-minio-parquet.py` e `docs/runbook.md`).
-- `modules/iam`: separa a identidade de escrita (Collector) da identidade de
-  leitura (times consultando seus dados) — princípio de menor privilégio.
+- `modules/s3-warm-tier`: the same bucket the `awss3exporter` writes to
+  locally in MinIO (`docker-compose.yml`), here as real S3.
+- `modules/glue-catalog` + `modules/athena`: schema and example queries
+  for the same query pattern validated locally with `duckdb`
+  (see `scripts/check-minio-parquet.py` and `docs/runbook.md`).
+- `modules/iam`: separates the write identity (Collector) from the read
+  identity (teams querying their own data) — least-privilege principle.
 
-## Limitação conhecida
+## Known limitation
 
-`terraform fmt -check -recursive` e `terraform init -backend=false` foram
-rodados neste ambiente (`fmt` passou, formatação já corrigida). `terraform
-validate` **não pôde ser executado aqui**: a política de rede do sandbox
-bloqueia `registry.terraform.io` (necessário para baixar o provider
-`hashicorp/aws`), então `terraform init` falha antes de chegar em `validate`.
-A sintaxe dos módulos foi revisada manualmente contra o schema documentado
-do provider AWS ~> 5.0, mas rode `terraform validate` localmente (com acesso
-normal à internet) antes de confiar cegamente nela.
+`terraform fmt -check -recursive` and `terraform init -backend=false` were
+run in this environment (`fmt` passed, formatting already fixed).
+`terraform validate` **could not be run here**: the sandbox's network
+policy blocks `registry.terraform.io` (required to download the
+`hashicorp/aws` provider), so `terraform init` fails before it gets to
+`validate`. The module syntax was reviewed manually against the documented
+schema of the AWS provider ~> 5.0, but run `terraform validate` locally
+(with normal internet access) before trusting it blindly.

@@ -1,6 +1,6 @@
-# Perfil de carga sintética por serviço. Os nomes DEVEM bater com
-# policy/service-catalog.yaml (mesmo "service.name") — é o que permite o
-# roteamento por valor fazer sentido de ponta a ponta na demo.
+# Synthetic load profile per service. Names MUST match
+# policy/service-catalog.yaml (same "service.name") — that's what makes
+# routing by value make sense end to end in the demo.
 services:
   - name: checkout-api
     error_rate: 0.05
@@ -38,8 +38,8 @@ services:
     trace_volume_per_min: 50
     emits_slo_metrics: false
 
-  # Candidatos naturais a "drop": alto volume, baixa criticidade (tier=low
-  # no service-catalog.yaml), a maior parte DEBUG/INFO sem erro.
+  # Natural "drop" candidates: high volume, low criticality (tier=low
+  # in service-catalog.yaml), mostly DEBUG/INFO with no error.
   - name: recommendation-engine
     error_rate: 0.005
     log_volume_per_min: 800

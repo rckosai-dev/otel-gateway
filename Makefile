@@ -3,16 +3,16 @@
 compile-policy:
 	python3 policy-compiler/compile.py
 
-# Recompila aplicando o downgrade dinâmico de budget, consultando o Prometheus
-# já em execução (poor-man's OpAMP — ver docs/architecture.md). Requer `make up`
-# rodando há tempo suficiente para acumular volume.
+# Recompiles applying the dynamic budget downgrade, querying the already
+# running Prometheus (poor man's OpAMP — see docs/architecture.md). Requires
+# `make up` to have been running long enough to accumulate volume.
 recompile-policy-with-budget:
 	python3 policy-compiler/compile.py --prometheus-url http://localhost:9090
 	docker compose restart otel-gateway-collector
 
 up: compile-policy
 	docker compose up -d
-	@echo "Grafana:    http://localhost:3000 (admin/admin por padrão)"
+	@echo "Grafana:    http://localhost:3000 (admin/admin by default)"
 	@echo "Prometheus: http://localhost:9090"
 	@echo "MinIO:      http://localhost:9001"
 

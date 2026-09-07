@@ -1,20 +1,21 @@
-# Referência humana da FORMA do config gerado — não é consumido pelo Collector
-# nem pelo policy-compiler. O compilador (policy-compiler/compile.py) monta o
-# YAML final programaticamente a partir de policy/*.yaml e grava o resultado
-# em otelcol-config.generated.yaml. Nunca edite o .generated.yaml à mão: mude
-# a política em policy/ e rode `make compile-policy`.
+# Human-readable reference for the SHAPE of the generated config — not
+# consumed by the Collector nor by the policy-compiler. The compiler
+# (policy-compiler/compile.py) builds the final YAML programmatically from
+# policy/*.yaml and writes the result to otelcol-config.generated.yaml.
+# Never hand-edit the .generated.yaml: change the policy in policy/ and run
+# `make compile-policy`.
 #
-# Forma geral (um bloco por sinal: logs, traces, metrics):
+# General shape (one block per signal: logs, traces, metrics):
 #
-#   receivers.otlp                        -> ponto único de entrada (Agent Collectors)
-#   processors.transform/tag_<signal>     -> tagging de service.tier/team/cost_center
-#                                             + decisão de telemetry.tier (OTTL, gerado)
-#   connectors.routing/<signal>           -> roteia por telemetry.tier (hot/warm/drop)
-#   connectors.count/<signal>_<tier>      -> contagem por service.name/team/cost_center
-#                                             (alimenta o showback de custo)
-#   processors.filter/drop_<signal>       -> descarta de fato a branch "drop" após contagem
+#   receivers.otlp                        -> single entry point (Agent Collectors)
+#   processors.transform/tag_<signal>     -> tags service.tier/team/cost_center
+#                                             + decides telemetry.tier (OTTL, generated)
+#   connectors.routing/<signal>           -> routes by telemetry.tier (hot/warm/drop)
+#   connectors.count/<signal>_<tier>      -> counts by service.name/team/cost_center
+#                                             (feeds the cost showback)
+#   processors.filter/drop_<signal>       -> actually discards the "drop" branch after counting
 #   exporters (hot)                       -> otlp/tempo, otlphttp/loki, prometheusremotewrite
-#   exporters (warm)                      -> awss3/warm (MinIO local / AWS S3 real)
-#   exporters (drop)                      -> nenhum dado real, só debug/audit amostrado
+#   exporters (warm)                      -> awss3/warm (local MinIO / real AWS S3)
+#   exporters (drop)                      -> no real data, only sampled debug/audit
 #
-# service.telemetry.metrics expõe a self-telemetry do Collector em :8888/metrics.
+# service.telemetry.metrics exposes the Collector's own self-telemetry on :8888/metrics.

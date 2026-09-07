@@ -1,26 +1,26 @@
 variable "region" {
-  description = "Região AWS de destino. ap-northeast-1 (Tóquio) por padrão, dado o foco em mercado Japão do projeto."
+  description = "Target AWS region. ap-northeast-1 (Tokyo) by default, given the project's focus on the Japan market."
   type        = string
   default     = "ap-northeast-1"
 }
 
 variable "environment" {
-  description = "Nome do ambiente (ex.: sandbox-plan-only, staging, production) — vira sufixo/prefixo de nomes de recurso."
+  description = "Environment name (e.g., sandbox-plan-only, staging, production) — becomes a resource-name suffix/prefix."
   type        = string
 }
 
 variable "warm_tier_bucket_name" {
-  description = "Nome do bucket S3 usado como warm tier consultável (Parquet + Athena/Glue)."
+  description = "S3 bucket name used as the queryable warm tier (Parquet + Athena/Glue)."
   type        = string
 }
 
 variable "athena_results_bucket_name" {
-  description = "Bucket separado para resultados de query do Athena (nunca reaproveitar o bucket de dados)."
+  description = "Separate bucket for Athena query results (never reuse the data bucket)."
   type        = string
 }
 
 variable "tags" {
-  description = "Tags comuns aplicadas a todos os recursos, para reconciliar com o cost-center do showback."
+  description = "Common tags applied to all resources, to reconcile with the showback cost-center."
   type        = map(string)
   default     = {}
 }

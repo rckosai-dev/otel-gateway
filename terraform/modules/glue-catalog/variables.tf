@@ -7,7 +7,7 @@ variable "warm_tier_bucket_id" {
 }
 
 variable "table_s3_prefix" {
-  description = "Prefixo dentro do bucket onde os arquivos Parquet particionados vivem."
+  description = "Prefix within the bucket where the partitioned Parquet files live."
   type        = string
   default     = "processed/"
 }

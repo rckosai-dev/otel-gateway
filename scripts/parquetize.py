@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Job de ETL do warm tier (o "caminho de consulta futura" do plano): lê os
-objetos brutos OTLP/JSON que o awss3exporter do Collector gravou em
-`otel/` (bucket MinIO local, ou S3 real em produção) e reescreve como
-Parquet particionado em `processed/cost_center=.../dt=.../service_name=...`,
-no shape esperado pela tabela Glue (terraform/modules/glue-catalog).
+Warm-tier ETL job (the plan's "future query path"): reads the raw
+OTLP/JSON objects the Collector's awss3exporter wrote to `otel/` (local
+MinIO bucket, or real S3 in production) and rewrites them as Parquet,
+partitioned as `processed/cost_center=.../dt=.../service_name=...`, in the
+shape expected by the Glue table (terraform/modules/glue-catalog).
 
-Em produção real, o caminho recomendado é Kinesis Firehose ou um job Glue
-ETL gerenciado — este script é o equivalente pragmático para a demo local,
-e documenta o mesmo contrato de schema.
+In real production, the recommended path is Kinesis Firehose or a managed
+Glue ETL job — this script is the pragmatic equivalent for the local demo,
+documenting the same schema contract.
 
-Uso:
+Usage:
     python3 scripts/parquetize.py \
         --endpoint-url http://localhost:9000 \
         --bucket warm-tier
 
-Requer credenciais AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY no ambiente
-(mesmas do .env — MINIO_ROOT_USER/MINIO_ROOT_PASSWORD).
+Requires AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY credentials in the
+environment (the same ones from .env — MINIO_ROOT_USER/MINIO_ROOT_PASSWORD).
 """
 import argparse
 import json
@@ -133,7 +133,7 @@ def main():
                 partitions[partition_key(row)].append(row)
 
     if object_count == 0:
-        print(f"[parquetize] nenhum objeto em s3://{args.bucket}/{args.raw_prefix} — nada a fazer.")
+        print(f"[parquetize] no objects in s3://{args.bucket}/{args.raw_prefix} — nothing to do.")
         return
 
     for (cost_center, dt, service_name), rows in partitions.items():
@@ -145,10 +145,10 @@ def main():
         buf = pa.BufferOutputStream()
         pq.write_table(table, buf, compression="snappy")
         s3.put_object(Bucket=args.bucket, Key=key, Body=buf.getvalue().to_pybytes())
-        print(f"[parquetize] {len(rows)} registros -> s3://{args.bucket}/{key}")
+        print(f"[parquetize] {len(rows)} records -> s3://{args.bucket}/{key}")
 
-    print(f"[parquetize] OK — {object_count} objetos brutos processados, "
-          f"{len(partitions)} partições escritas.")
+    print(f"[parquetize] OK — {object_count} raw objects processed, "
+          f"{len(partitions)} partitions written.")
 
 
 if __name__ == "__main__":

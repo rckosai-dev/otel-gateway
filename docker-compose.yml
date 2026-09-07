@@ -30,7 +30,7 @@ services:
     volumes:
       - ./minio/init:/init:ro
 
-  # --- Hot tier (stack Grafana open-source) --------------------------------
+  # --- Hot tier (open-source Grafana stack) ---------------------------------
   loki:
     image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/loki-config.yaml"]
@@ -79,7 +79,7 @@ services:
       - loki
       - tempo
 
-  # --- Gateway Collector (roteamento por valor) ----------------------------
+  # --- Gateway Collector (routing by value) ---------------------------------
   otel-gateway-collector:
     image: otel/opentelemetry-collector-contrib:0.102.1
     command: ["--config=/etc/otelcol/otelcol-config.generated.yaml"]
@@ -89,10 +89,10 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-otelgw}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-otelgw-warm-tier}
     ports:
-      - "4317:4317"   # OTLP gRPC (recebe do telemetry-generator / Agent Collectors)
+      - "4317:4317"   # OTLP gRPC (receives from telemetry-generator / Agent Collectors)
       - "4318:4318"   # OTLP HTTP
-      - "8888:8888"   # self-telemetry (métricas do próprio Collector)
-      - "8889:8889"   # métricas de negócio (count connectors -> prometheus/self)
+      - "8888:8888"   # self-telemetry (the Collector's own metrics)
+      - "8889:8889"   # business metrics (count connectors -> prometheus/self)
       - "13133:13133" # health_check extension
     depends_on:
       minio-init:
@@ -102,7 +102,7 @@ services:
       tempo:
         condition: service_started
 
-  # --- Carga sintética ------------------------------------------------------
+  # --- Synthetic load ---------------------------------------------------------
   telemetry-generator:
     build: ./telemetry-generator
     environment:
@@ -111,7 +111,7 @@ services:
       - ./telemetry-generator/services.yaml:/app/services.yaml:ro
     depends_on:
       - otel-gateway-collector
-    profiles: ["load"]   # só sobe sob demanda via `make load`, não no `up` padrão
+    profiles: ["load"]   # only comes up on demand via `make load`, not on plain `up`
 
 volumes:
   minio-data:

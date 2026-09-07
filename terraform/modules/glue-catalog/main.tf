@@ -1,13 +1,12 @@
-# Catálogo Glue sobre o warm tier (Parquet particionado), consultável via
-# Athena. Simplificação deliberada de demo: logs/traces/metrics roteados
-# para warm compartilham UMA tabela genérica de "registros" (signal_type
-# diferencia o tipo); em produção real, tabelas separadas por sinal
-# tendem a compensar o custo extra de manutenção com queries mais simples —
-# ver docs/cost-model.md.
+# Glue catalog over the warm tier (partitioned Parquet), queryable via
+# Athena. Deliberate demo simplification: logs/traces/metrics routed to
+# warm share ONE generic "records" table (signal_type differentiates the
+# type); in real production, separate tables per signal tend to offset the
+# extra maintenance cost with simpler queries — see docs/cost-model.md.
 #
-# Particionamento: cost_center / dt / service_name — otimizado para os dois
-# padrões de consulta mais comuns (investigação de incidente por serviço, e
-# reconstrução de custo/auditoria por time no fim do período).
+# Partitioning: cost_center / dt / service_name — optimized for the two
+# most common query patterns (per-service incident investigation, and
+# cost/audit reconstruction by team at period end).
 
 resource "aws_glue_catalog_database" "warm_tier" {
   name = var.database_name

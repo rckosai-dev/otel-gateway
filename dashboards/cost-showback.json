@@ -32,7 +32,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Custo residual (hot + warm) por cost-center",
+      "title": "Residual cost (hot + warm) by cost-center",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
@@ -45,7 +45,7 @@
     },
     {
       "id": 2,
-      "title": "Economia por downgrade (hot evitado -> warm)",
+      "title": "Downgrade saving (hot avoided -> warm)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
@@ -58,7 +58,7 @@
     },
     {
       "id": 3,
-      "title": "Economia por drop (descartado, custo evitado total)",
+      "title": "Drop saving (discarded, total avoided cost)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
@@ -71,7 +71,7 @@
     },
     {
       "id": 4,
-      "title": "Distribuição de volume por tier",
+      "title": "Volume distribution by tier",
       "type": "piechart",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
@@ -84,7 +84,7 @@
     },
     {
       "id": 5,
-      "title": "Top serviços por custo residual",
+      "title": "Top services by residual cost",
       "type": "table",
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
       "targets": [
@@ -97,7 +97,7 @@
     },
     {
       "id": 6,
-      "title": "Serviços sob pressão de budget (downgrade dinâmico ativo)",
+      "title": "Services under budget pressure (dynamic downgrade active)",
       "type": "table",
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
       "targets": [
@@ -110,13 +110,13 @@
     },
     {
       "id": 7,
-      "title": "Volume vs budget por serviço (janela de 1h)",
+      "title": "Volume vs budget by service (1h window)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
       "targets": [
         {
           "expr": "policy:volume_gb:by_service{service_name=~\"$service\"}",
-          "legendFormat": "{{service_name}} (realizado)"
+          "legendFormat": "{{service_name}} (actual)"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "decgbytes" }, "overrides": [] }

@@ -1,50 +1,50 @@
 # otel-gateway — otel-telemetry-cost-governance
 
-Arquitetura de **governança de custo de telemetria vendor-neutral**, construída
-sobre o OpenTelemetry Collector: roteamento por valor (hot/warm/drop) decidido
-por uma política centralizada e versionada — não configuração dispersa por
-collector —, com showback de custo por serviço/cost-center e retenção como
-código.
+A **vendor-neutral telemetry cost governance** architecture built on the
+OpenTelemetry Collector: routing by value (hot/warm/drop) decided by a
+centralized, versioned policy — not configuration scattered across
+collectors —, with cost showback by service/cost-center and retention as
+code.
 
-Ver o artigo completo em [`docs/article.md`](docs/article.md) e a arquitetura
-detalhada em [`docs/architecture.md`](docs/architecture.md).
+See the full article at [`docs/article.md`](docs/article.md) and the
+detailed architecture at [`docs/architecture.md`](docs/architecture.md).
 
-## O que tem aqui
+## What's in here
 
-- **`policy/`** — catálogo de serviços, matriz de roteamento e budgets de
-  custo. Fonte de verdade única, versionada em Git.
-- **`policy-compiler/`** — compila a política em config real do Collector
-  (OTTL) + recording rules de custo do Prometheus.
-- **`collector/`** — Gateway Collector: tagging, roteamento (`routingconnector`),
-  `tail_sampling`, contagem por service/team/cost_center.
-- **`telemetry-generator/`** — carga sintética (8 serviços, mix realista de
-  criticidade/volume/erro) para exercitar o roteamento sem dados reais.
-- **`dashboards/` + `prometheus/rules/`** — showback de custo (downgrade
-  saving, drop saving, custo residual) e saúde do pipeline, como código.
-- **`terraform/`** — infraestrutura AWS real do warm tier (S3 + Glue + Athena
-  + IAM), escrita mas não aplicada neste ambiente de demo.
-- **`docs/`** — arquitetura, racional da política de roteamento, modelo de
-  custo, runbook operacional, e o artigo.
+- **`policy/`** — service catalog, routing matrix, and cost budgets. The
+  single source of truth, versioned in Git.
+- **`policy-compiler/`** — compiles the policy into real Collector config
+  (OTTL) + Prometheus cost recording rules.
+- **`collector/`** — Gateway Collector: tagging, routing (`routingconnector`),
+  `tail_sampling`, counting by service/team/cost_center.
+- **`telemetry-generator/`** — synthetic load (8 services, a realistic
+  criticality/volume/error mix) to exercise routing without real data.
+- **`dashboards/` + `prometheus/rules/`** — cost showback (downgrade
+  saving, drop saving, residual cost) and pipeline health, as code.
+- **`terraform/`** — real AWS infrastructure for the warm tier (S3 + Glue +
+  Athena + IAM), written but not applied in this demo environment.
+- **`docs/`** — architecture, routing-policy rationale, cost model,
+  operational runbook, and the article.
 
 ## Quickstart
 
 ```bash
 cp .env.example .env
 pip install -r policy-compiler/requirements.txt -r scripts/requirements.txt
-make up          # compila a política e sobe todo o stack local (Docker)
-make load-smoke  # carga curta para verificar conectividade ponta a ponta
+make up          # compiles the policy and brings up the full local stack (Docker)
+make load-smoke  # short load run to check end-to-end connectivity
 ```
 
-Depois: Grafana em http://localhost:3000, Prometheus em
-http://localhost:9090, MinIO em http://localhost:9001. Fluxo completo de
-validação em [`docs/runbook.md`](docs/runbook.md).
+Then: Grafana at http://localhost:3000, Prometheus at
+http://localhost:9090, MinIO at http://localhost:9001. Full validation
+flow in [`docs/runbook.md`](docs/runbook.md).
 
-## Estado deste ambiente de desenvolvimento
+## State of this development environment
 
-Este projeto foi construído num sandbox sem daemon Docker disponível — toda
-a lógica (policy-compiler, telemetry-generator, parsing de OTLP JSON) foi
-testada isoladamente, sintaxe de Terraform/docker-compose/JSON validada
-estaticamente, mas a execução end-to-end completa do stack via
-`docker-compose.yml` **ainda não foi executada**. Rode o quickstart acima
-localmente com Docker disponível para validar de ponta a ponta — ver
-[`docs/runbook.md`](docs/runbook.md#limitações-conhecidas-deste-ambiente-de-desenvolvimento).
+This project was built in a sandbox with no Docker daemon available — all
+the logic (policy-compiler, telemetry-generator, OTLP JSON parsing) was
+tested in isolation, and Terraform/docker-compose/JSON syntax was validated
+statically, but the full end-to-end run of the stack via
+`docker-compose.yml` **has not been executed yet**. Run the quickstart
+above locally with Docker available to validate it end to end — see
+[`docs/runbook.md`](docs/runbook.md#known-limitations-of-this-development-environment).

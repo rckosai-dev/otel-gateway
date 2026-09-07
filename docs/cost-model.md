@@ -1,57 +1,59 @@
-# Modelo de custo — como os números do showback são calculados
+# Cost model — how the showback numbers are calculated
 
-## O que é medido de verdade vs. o que é estimado
+## What's actually measured vs. what's estimated
 
-O `countconnector` do Collector mede **contagem de registros** roteados por
-`service.name`/`team`/`cost_center`/`telemetry.tier` — isso é medição real,
-exposta em `:8888`/`:8889` e raspada pelo Prometheus. **Não é medição de
-bytes de rede ou disco.**
+The Collector's `countconnector` measures **record counts** routed by
+`service.name`/`team`/`cost_center`/`telemetry.tier` — that's a real
+measurement, exposed on `:8888`/`:8889` and scraped by Prometheus. **It is
+not a measurement of network or disk bytes.**
 
-Para converter contagem em GB estimado (necessário para expressar custo em
-USD), usamos um tamanho médio por tipo de sinal, definido em
+To convert a count into an estimated GB (needed to express cost in USD), we
+use an average size per signal type, defined in
 `policy-compiler/compile.py::BYTES_PER_RECORD`:
 
-| Sinal | Bytes/registro (estimado) |
+| Signal | Bytes/record (estimated) |
 |---|---|
 | logs | 256 |
 | spans (traces) | 512 |
-| datapoints (métricas) | 64 |
+| datapoints (metrics) | 64 |
 
-Estes números são **aproximações documentadas**, não uma medição precisa de
-payload serializado. Para uma demo/portfólio isso é aceitável e é dito
-explicitamente aqui e no artigo — a metodologia de roteamento por valor não
-depende de precisão de bytes, só de proporção relativa entre serviços/tiers.
-Em produção, o ideal seria instrumentar o exporter para relatar bytes reais
-(algumas versões recentes do Collector expõem métricas de tamanho de
-payload por exporter).
+These numbers are **documented approximations**, not a precise measurement
+of serialized payload size. For a demo/portfolio project that's acceptable,
+and it's stated explicitly here and in the article — the routing-by-value
+methodology doesn't depend on byte-level precision, only on the relative
+proportion between services/tiers. In production, the ideal would be to
+instrument the exporter to report real bytes (some recent Collector
+versions expose payload-size metrics per exporter).
 
-## Constantes de custo
+## Cost constants
 
-`COST_PER_GB_HOT` (padrão 0.50 USD/GB) e `COST_PER_GB_WARM` (padrão 0.023
-USD/GB) — a segunda é próxima do preço público de S3 Standard; a primeira é
-uma aproximação de custo de ingestão de uma plataforma de observabilidade
-comercial paga por volume. Ajustáveis via `.env` e via flags do
-`policy-compiler` (`--cost-per-gb-hot`/`--cost-per-gb-warm`).
+`COST_PER_GB_HOT` (default 0.50 USD/GB) and `COST_PER_GB_WARM` (default
+0.023 USD/GB) — the latter is close to S3 Standard's public price; the
+former is an approximation of the ingestion cost of a commercial
+volume-priced observability platform. Adjustable via `.env` and via
+`policy-compiler` flags (`--cost-per-gb-hot`/`--cost-per-gb-warm`).
 
-## As três métricas de showback
+## The three showback metrics
 
-- **`cost:residual_usd:by_service_tier`** — o que ainda é pago (hot + warm).
-- **`cost:downgrade_saving_usd:by_service`** — volume que foi para warm em
-  vez de hot, multiplicado pela diferença de preço. **Simplificação
-  deliberada**: isso mistura "reclassificação verdadeira" (um sinal que
-  seria hot mas foi rebaixado) com "base natural warm" (um sinal que nunca
-  seria hot, ex.: log INFO de serviço standard). Não separamos as duas
-  porque exigiria rastrear a decisão contrafactual "o que teria acontecido
-  sem a regra X" — fora do escopo da demo, mas documentado aqui para quem
-  for adaptar isso para uma implementação real.
-- **`cost:drop_saving_usd:by_service`** — volume descartado × custo hot
-  (economia total, sem simplificação — descartado é descartado).
+- **`cost:residual_usd:by_service_tier`** — what's still being paid (hot +
+  warm).
+- **`cost:downgrade_saving_usd:by_service`** — volume that went to warm
+  instead of hot, multiplied by the price difference. **Deliberate
+  simplification**: this mixes "true reclassification" (a signal that
+  would be hot but got downgraded) with "natural warm baseline" (a signal
+  that would never be hot, e.g. an INFO log from a standard-tier service).
+  We don't separate the two because it would require tracking the
+  counterfactual "what would have happened without rule X" — out of scope
+  for the demo, but documented here for anyone adapting this into a real
+  implementation.
+- **`cost:drop_saving_usd:by_service`** — dropped volume × hot cost (total
+  saving, no simplification — dropped is dropped).
 
-## Custo de consulta (Athena) — por que particionamento importa
+## Query cost (Athena) — why partitioning matters
 
-Athena cobra por TB **escaneado**, não por tempo de query. A tabela Glue
-(`terraform/modules/glue-catalog`) particiona por `cost_center`/`dt`/
-`service_name` justamente para que uma pergunta como "logs do checkout-api
-em 07/09" escaneie só a partição relevante, não o bucket inteiro. Um warm
-tier sem particionamento correto é uma armadilha comum: a economia de
-ingestão é destruída pelo custo de cada consulta subsequente.
+Athena charges by TB **scanned**, not by query time. The Glue table
+(`terraform/modules/glue-catalog`) is partitioned by `cost_center`/`dt`/
+`service_name` precisely so a question like "checkout-api logs on 09/07"
+scans only the relevant partition, not the entire bucket. A warm tier
+without correct partitioning is a common trap: the ingestion saving gets
+wiped out by the cost of every subsequent query.

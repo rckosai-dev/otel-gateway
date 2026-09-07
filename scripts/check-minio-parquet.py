@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Valida o resultado do parquetize.py: lista objetos Parquet em
-`processed/` no bucket warm-tier, baixa um deles e imprime schema + contagem
-de linhas — o passo 5 do checklist de validação end-to-end."""
+"""Validates the output of parquetize.py: lists Parquet objects under
+`processed/` in the warm-tier bucket, downloads one, and prints its schema +
+row count — step 5 of the end-to-end validation checklist."""
 import argparse
 import io
 
@@ -21,18 +21,18 @@ def main():
     objects = resp.get("Contents", [])
 
     if not objects:
-        print(f"[check-minio-parquet] nenhum objeto encontrado em "
-              f"s3://{args.bucket}/{args.prefix} — rode `python3 scripts/parquetize.py` primeiro.")
+        print(f"[check-minio-parquet] no objects found under "
+              f"s3://{args.bucket}/{args.prefix} — run `python3 scripts/parquetize.py` first.")
         raise SystemExit(1)
 
-    print(f"[check-minio-parquet] {len(objects)} arquivo(s) Parquet encontrados.")
+    print(f"[check-minio-parquet] {len(objects)} Parquet file(s) found.")
     sample_key = objects[0]["Key"]
     body = s3.get_object(Bucket=args.bucket, Key=sample_key)["Body"].read()
     table = pq.read_table(io.BytesIO(body))
 
-    print(f"[check-minio-parquet] amostra: {sample_key}")
+    print(f"[check-minio-parquet] sample: {sample_key}")
     print(f"[check-minio-parquet] schema:\n{table.schema}")
-    print(f"[check-minio-parquet] linhas: {table.num_rows}")
+    print(f"[check-minio-parquet] rows: {table.num_rows}")
 
 
 if __name__ == "__main__":

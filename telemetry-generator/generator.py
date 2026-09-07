@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Orquestra a carga sintética: um worker por serviço (de services.yaml),
-emitindo logs/traces/métricas via OTLP para o Gateway Collector, na taxa
-definida pelo serviço x multiplicador do perfil escolhido.
+"""Orchestrates the synthetic load: one worker per service (from
+services.yaml), emitting logs/traces/metrics via OTLP to the Gateway
+Collector, at the rate defined by service x the chosen profile multiplier.
 
-Uso:
+Usage:
     python3 generator.py --profile steady --duration 300
     python3 generator.py --profile smoke --duration 30
 """
@@ -59,7 +59,7 @@ def run_service_worker(service: dict, otlp_endpoint: str, multiplier: float, sto
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=list(PROFILE_MULTIPLIER), default="steady")
-    parser.add_argument("--duration", type=int, default=300, help="segundos de carga")
+    parser.add_argument("--duration", type=int, default=300, help="load duration in seconds")
     parser.add_argument("--services-file", default=str(Path(__file__).with_name("services.yaml")))
     parser.add_argument("--otlp-endpoint",
                          default=os.environ.get("OTLP_ENDPOINT", "localhost:4317"))
@@ -82,14 +82,14 @@ def main():
     for t in threads:
         t.join()
 
-    print("[telemetry-generator] carga concluída.")
+    print("[telemetry-generator] load finished.")
 
-    # Os providers OTel registram atexit hooks que fazem force_flush()
-    # síncrono com retry/backoff exponencial do exporter OTLP — se o
-    # Collector estiver indisponível ou lento, isso pode travar a saída do
-    # processo por muito mais tempo que --duration. Como esta é uma carga
-    # de demonstração (perder o último lote em trânsito é aceitável), saímos
-    # explicitamente sem passar pelo shutdown padrão do interpretador.
+    # OTel providers register atexit hooks that do a synchronous
+    # force_flush() with the OTLP exporter's retry/backoff — if the
+    # Collector is unavailable or slow, this can block process exit for far
+    # longer than --duration. Since this is a demo load generator (losing
+    # the last in-flight batch is acceptable), we exit explicitly, bypassing
+    # the interpreter's normal shutdown.
     sys.stdout.flush()
     os._exit(0)
 

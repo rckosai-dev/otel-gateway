@@ -1,9 +1,9 @@
-# Workgroup + queries de exemplo para os dois padrões de consulta do warm
-# tier documentados em docs/runbook.md: (a) investigação de incidente por
-# serviço/janela de tempo, (b) reconstrução de custo/auditoria por
-# time/cost-center. Nunca aponte result_configuration para o mesmo bucket
-# dos dados — Athena cobra por TB escaneado, então os resultados de query
-# (pequenos) ficam isolados dos dados particionados (grandes).
+# Workgroup + example queries for the two warm-tier query patterns
+# documented in docs/runbook.md: (a) per-service/time-window incident
+# investigation, (b) cost/audit reconstruction by team/cost-center. Never
+# point result_configuration at the same bucket as the data — Athena
+# charges by TB scanned, so the (small) query results stay isolated from
+# the (large) partitioned data.
 
 resource "aws_athena_workgroup" "cost_governance" {
   name = var.workgroup_name
@@ -23,10 +23,10 @@ resource "aws_athena_named_query" "incident_investigation" {
   workgroup = aws_athena_workgroup.cost_governance.id
   database  = var.database_name
   query     = <<-SQL
-    -- Padrão (a): investigação de incidente — logs/traces warm de um
-    -- serviço numa janela de tempo, sem precisar reingerir no backend caro.
-    -- Particionamento por service_name/dt torna isto barato mesmo em
-    -- volumes grandes (Athena cobra por TB escaneado).
+    -- Pattern (a): incident investigation — warm logs/traces for a
+    -- service in a time window, with no need to re-ingest into the
+    -- expensive backend. Partitioning by service_name/dt keeps this cheap
+    -- even at large volumes (Athena charges by TB scanned).
     SELECT ts, signal_type, severity, status_code, trace_id, body
     FROM ${var.table_name}
     WHERE service_name = 'checkout-api'
@@ -41,9 +41,9 @@ resource "aws_athena_named_query" "cost_reconstruction" {
   workgroup = aws_athena_workgroup.cost_governance.id
   database  = var.database_name
   query     = <<-SQL
-    -- Padrão (b): reconstrução de custo por time/cost-center no fim do
-    -- período, cruzando volume warm real armazenado com o custo por GB
-    -- (mesmo modelo usado no dashboard de showback, ver docs/cost-model.md).
+    -- Pattern (b): cost reconstruction by team/cost-center at period end,
+    -- cross-referencing real stored warm volume with cost per GB (the same
+    -- model used in the showback dashboard, see docs/cost-model.md).
     SELECT cost_center, dt, COUNT(*) AS records
     FROM ${var.table_name}
     WHERE dt BETWEEN '2026-09-01' AND '2026-09-30'

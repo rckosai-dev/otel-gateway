@@ -1,23 +1,23 @@
-# Matriz de decisão de roteamento de telemetria.
-# Avaliada em ORDEM pelo policy-compiler: a primeira regra que casar decide o
-# telemetry.tier de destino (hot | warm | drop). Isso é compilado para
-# expressões OTTL dentro de collector/config/otelcol-config.generated.yaml.
+# Telemetry routing decision matrix.
+# Evaluated IN ORDER by the policy-compiler: the first rule that matches
+# decides the target telemetry.tier (hot | warm | drop). This is compiled
+# into OTTL expressions inside collector/config/otelcol-config.generated.yaml.
 #
-# Este arquivo é a política legível e auditável; nunca edite o YAML do
-# Collector gerado à mão — mude aqui e rode `make compile-policy`.
+# This file is the readable, auditable policy; never hand-edit the
+# generated Collector YAML — change it here and run `make compile-policy`.
 
 version: 1
 
 rules:
-  # 1. Overrides de compliance/retenção legal sempre vencem, para qualquer
-  #    tier de serviço. Nunca pode resultar em drop.
+  # 1. Compliance/legal-retention overrides always win, for any service
+  #    tier. Can never result in a drop.
   - id: compliance-hold-override
     when:
       compliance_hold: true
     decision: warm
-    reason: "Retenção legal/auditoria — nunca descartar, independente de tier ou volume."
+    reason: "Legal retention/audit — never discard, regardless of tier or volume."
 
-  # 2. Sinal de erro/SLO-relevante sobe um nível, mesmo em serviço standard.
+  # 2. An error/SLO-relevant signal moves up one tier, even for a standard service.
   - id: error-signal-upgrade
     when:
       any_of:
@@ -28,32 +28,33 @@ rules:
     decision_by_tier:
       critical: hot
       standard: hot
-      low: warm       # erro em serviço low-tier ainda vale warm, não hot nem drop
-    reason: "Sinal de erro ou SLO-relevante: prioriza diagnosticabilidade sobre custo."
+      low: warm       # an error on a low-tier service still gets warm, not hot or drop
+    reason: "Error or SLO-relevant signal: prioritizes diagnosability over cost."
 
-  # 3. Base por tier de criticidade do serviço (do service-catalog.yaml),
-  #    para sinais sem erro/SLO-relevância especial.
+  # 3. Base classification by service criticality tier (from
+  #    service-catalog.yaml), for signals with no error/special SLO relevance.
   - id: base-tier-classification
     when:
-      any_of: [true]   # regra "catch-all" por tier, avaliada após 1 e 2
+      any_of: [true]   # "catch-all" rule by tier, evaluated after 1 and 2
     decision_by_tier:
-      critical: warm    # crítico sem erro: warm por padrão (não tudo de crítico é hot)
+      critical: warm    # critical without error: warm by default (not everything critical is hot)
       standard: warm
       low: drop-candidate
-    reason: "Classificação base por criticidade do serviço; erro/SLO já tratado acima."
+    reason: "Base classification by service criticality; error/SLO already handled above."
 
-  # 4. Downgrade dinâmico por pressão de orçamento (ver policy/cost-budget.yaml).
-  #    Avaliado fora do Collector (Prometheus rule expõe over_budget=1 por
-  #    serviço); o policy-compiler injeta esse estado como atributo runtime
-  #    e esta regra força um nível de downgrade adicional quando presente.
+  # 4. Dynamic downgrade under budget pressure (see policy/cost-budget.yaml).
+  #    Evaluated outside the Collector (a Prometheus rule exposes
+  #    over_budget=1 per service); the policy-compiler injects this state
+  #    as a runtime attribute and this rule forces an extra downgrade level
+  #    when present.
   - id: budget-pressure-downgrade
     when:
       over_budget: true
       log_severity_not_in: [ERROR, FATAL]
       span_status_not: ERROR
     decision: downgrade_one_level
-    reason: "Circuit breaker de custo: serviço estourou budget, sinais não-críticos descem um nível até normalizar."
+    reason: "Cost circuit breaker: the service exceeded its budget, non-critical signals drop one tier until it normalizes."
 
-# Default final se nenhuma regra explícita casar (não deveria ocorrer, pois a
-# regra 3 é catch-all, mas serve de rede de segurança).
+# Final default if no explicit rule matches (shouldn't happen, since rule 3
+# is a catch-all, but serves as a safety net).
 default_decision: warm

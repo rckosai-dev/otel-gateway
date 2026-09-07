@@ -1,6 +1,6 @@
-"""Emissão de traces sintéticos via OTLP, com status ERROR variável por
-service.error_rate e latência ocasionalmente alta — alimenta tanto a regra
-de upgrade por erro quanto o tail_sampling do Collector."""
+"""Synthetic trace emission via OTLP, with ERROR status varying by
+service.error_rate and occasionally high latency — feeds both the
+error-upgrade rule and the Collector's tail_sampling."""
 import random
 import time
 
@@ -14,11 +14,11 @@ _ROUTES = ["/cart", "/checkout", "/search", "/recommend", "/health"]
 
 
 def build_tracer(service_name: str, otlp_endpoint: str):
-    # Usa provider.get_tracer() diretamente em vez de trace.set_tracer_provider()
-    # + trace.get_tracer(): o provider global é um singleton por processo, e
-    # como cada worker de serviço tem seu próprio TracerProvider/Resource,
-    # passar pelo registro global faria todos os spans, exceto os do primeiro
-    # serviço registrado, carregarem o resource (service.name) errado.
+    # Uses provider.get_tracer() directly instead of trace.set_tracer_provider()
+    # + trace.get_tracer(): the global provider is a process-wide singleton,
+    # and since each service worker has its own TracerProvider/Resource,
+    # going through the global registry would make every span except the
+    # first registered service's carry the wrong resource (service.name).
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)
     exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)

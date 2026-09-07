@@ -1,13 +1,14 @@
-# Catálogo de serviços — fonte de verdade para classificação de criticidade.
-# Owned pelo time de plataforma/observability; times de produto só propõem via PR.
+# Service catalog — source of truth for criticality classification.
+# Owned by the platform/observability team; product teams only propose
+# changes via PR.
 #
 # tier:
-#   critical  -> Tier-0/1: impacto direto em receita/SLA externo
-#   standard  -> Tier-2: impacto operacional, sem SLA externo direto
-#   low       -> Tier-3: batch, jobs internos, baixo valor de diagnóstico
+#   critical  -> Tier-0/1: direct impact on revenue/external SLA
+#   standard  -> Tier-2: operational impact, no direct external SLA
+#   low       -> Tier-3: batch, internal jobs, low diagnostic value
 #
-# compliance_hold: true força retenção mínima em warm independente de tier/volume
-# (auditoria, dados regulatórios) — nunca pode ser "drop".
+# compliance_hold: true forces a minimum warm-tier retention regardless of
+# tier/volume (audit, regulated data) — can never be "drop".
 services:
   - name: checkout-api
     tier: critical
