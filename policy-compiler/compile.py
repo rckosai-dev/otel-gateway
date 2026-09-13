@@ -32,6 +32,7 @@ from pathlib import Path
 
 import yaml
 from jsonschema import validate as jsonschema_validate
+from jsonschema.exceptions import ValidationError as SchemaError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POLICY_DIR = REPO_ROOT / "policy"
@@ -61,10 +62,21 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
+def _validate_against(doc: dict, schema_file: str, label: str) -> None:
+    """Validate a policy doc against its JSON Schema, turning jsonschema's raw
+    ValidationError into a friendly, contextual ValueError (so CLIs show a clear
+    message instead of a traceback)."""
+    try:
+        jsonschema_validate(doc, load_yaml_json(SCHEMA_DIR / schema_file))
+    except SchemaError as exc:
+        where = "/".join(str(p) for p in exc.absolute_path) or "(root)"
+        raise ValueError(f"{label}: {exc.message} — at {where}") from None
+
+
 def validate_policies(catalog: dict, routing: dict, budget: dict) -> None:
-    jsonschema_validate(catalog, load_yaml_json(SCHEMA_DIR / "service-catalog.schema.json"))
-    jsonschema_validate(routing, load_yaml_json(SCHEMA_DIR / "routing-policy.schema.json"))
-    jsonschema_validate(budget, load_yaml_json(SCHEMA_DIR / "cost-budget.schema.json"))
+    _validate_against(catalog, "service-catalog.schema.json", "service-catalog.yaml")
+    _validate_against(routing, "routing-policy.schema.json", "routing-policy.yaml")
+    _validate_against(budget, "cost-budget.schema.json", "cost-budget.yaml")
 
     # Enforce the closed `when` vocabulary from conditions.json (single source of
     # truth). This is what makes new rules authored via CLI/editor/YAML safe to
@@ -75,11 +87,13 @@ def validate_policies(catalog: dict, routing: dict, budget: dict) -> None:
     for rule in routing["rules"]:
         try:
             jsonschema_validate(rule.get("when", {}), when_schema)
-        except Exception as exc:  # noqa: BLE001 — re-raise with rule context
+        except SchemaError as exc:
+            where = "/".join(str(p) for p in exc.absolute_path)
+            loc = f" (at {where})" if where else ""
             raise ValueError(
                 f"routing-policy.yaml: rule '{rule.get('id', '?')}' has an invalid "
-                f"when-clause: {exc}"
-            ) from exc
+                f"when-clause: {exc.message}{loc}"
+            ) from None
 
     names = [s["name"] for s in catalog["services"]]
     if len(names) != len(set(names)):

@@ -170,10 +170,71 @@ def _prompt(msg, default=None):
     return val or (default if default is not None else "")
 
 
-def _wizard_build_rule(conditions):
+def _prompt_nonempty(msg):
+    while True:
+        v = input(f"{msg}: ").strip()
+        if v:
+            return v
+        print("  required — please enter a value")
+
+
+def _prompt_choice(msg, options, default=None):
+    joined = "/".join(options)
+    while True:
+        raw = input(f"{msg} ({joined}){f' [{default}]' if default else ''}: ").strip()
+        val = raw or default
+        if val in options:
+            return val
+        print(f"  must be one of: {', '.join(options)}")
+
+
+def _prompt_value(key, spec):
+    """Prompt for a condition value and validate it against conditions.json
+    (enum / type / list membership), re-prompting until it is valid."""
+    v = spec["value"]
+    t = v["type"]
+    enum = v.get("enum")
+    item_enum = v.get("item_enum")
+    if enum:
+        hint = "/".join(enum)
+    elif item_enum:
+        hint = f"any of {', '.join(item_enum)} (space/comma-separated)"
+    else:
+        hint = t
+    while True:
+        raw = input(f"  value for {key} ({hint}): ").strip()
+        if t == "boolean":
+            low = raw.lower()
+            if low in ("true", "1", "yes", "y"):
+                return True
+            if low in ("false", "0", "no", "n"):
+                return False
+            print("  enter true or false"); continue
+        if not raw and t != "array":
+            print("  required"); continue
+        try:
+            val = _coerce_value(v, raw)
+        except (ValueError, TypeError):
+            print(f"  invalid {t}"); continue
+        if t == "string" and enum and val not in enum:
+            print(f"  must be one of: {', '.join(enum)}"); continue
+        if t == "array":
+            if not val:
+                print("  select at least one value"); continue
+            if item_enum and [x for x in val if x not in item_enum]:
+                print(f"  must be from: {', '.join(item_enum)}"); continue
+        return val
+
+
+def _wizard_build_rule(conditions, existing_ids):
     print("\n-- New routing rule --")
-    rule_id = _prompt("rule id (kebab-case)")
-    reason = _prompt("reason (human-readable, required for audit)")
+    existing = set(existing_ids)
+    while True:
+        rule_id = _prompt_nonempty("rule id (kebab-case)")
+        if rule_id in existing:
+            print(f"  a rule with id '{rule_id}' already exists — choose another"); continue
+        break
+    reason = _prompt_nonempty("reason (human-readable, required for audit)")
 
     cond_keys = [k for k, s in conditions["conditions"].items()
                  if not s.get("compile_time") and not s.get("negates_family")]
@@ -184,34 +245,35 @@ def _wizard_build_rule(conditions):
 
     atoms = []
     while True:
-        raw = _prompt("add condition # (blank to finish)")
+        raw = input("add condition # (blank to finish): ").strip()
         if raw == "":
+            if not atoms:
+                print("  add at least one condition (or use '(always match)' via any_of in the editor)")
+                # allow a deliberate catch-all: confirm empty
+                if input("  create rule with NO conditions (matches nothing useful)? (y/N): ").strip().lower() != "y":
+                    continue
             break
         try:
             key = cond_keys[int(raw)]
         except (ValueError, IndexError):
             print("  invalid selection"); continue
-        spec = conditions["conditions"][key]
-        v = _prompt(f"  value for {key} ({spec['value']['type']})")
-        atoms.append({key: _coerce_value(spec["value"], v)})
+        atoms.append({key: _prompt_value(key, conditions["conditions"][key])})
 
     when = {}
     if len(atoms) == 1:
         when = atoms[0]
     elif len(atoms) > 1:
-        combine = _prompt("combine as (any_of / all_of)", "any_of")
-        when[combine] = atoms
+        when[_prompt_choice("combine as", ["any_of", "all_of"], "any_of")] = atoms
 
-    dec_kind = _prompt("decision kind (flat / by_tier)", "flat")
     rule = {"id": rule_id, "when": when, "reason": reason}
-    if dec_kind == "by_tier":
-        by = {}
-        for tier in conditions["tiers"]:
-            by[tier] = _prompt(f"  decision for {tier} tier "
-                               f"({'/'.join(conditions['decisions']['by_tier'])})", "warm")
-        rule["decision_by_tier"] = by
+    if _prompt_choice("decision kind", ["flat", "by_tier"], "flat") == "by_tier":
+        opts = conditions["decisions"]["by_tier"]
+        rule["decision_by_tier"] = {
+            tier: _prompt_choice(f"  decision for {tier} tier", opts, "warm")
+            for tier in conditions["tiers"]
+        }
     else:
-        rule["decision"] = _prompt(f"decision ({'/'.join(conditions['decisions']['flat'])})", "warm")
+        rule["decision"] = _prompt_choice("decision", conditions["decisions"]["flat"], "warm")
     return rule
 
 
@@ -271,13 +333,14 @@ def _insert_rule_text(text, rule, before=None, at=None):
 
 def cmd_new_rule(args):
     conditions = compiler.load_conditions()
+    catalog, routing, budget = _load_all()
     if args.from_json:
         rule = json.loads(Path(args.from_json).read_text())
     else:
-        rule = _wizard_build_rule(conditions)
+        existing_ids = [r.get("id", "") for r in routing.get("rules", [])]
+        rule = _wizard_build_rule(conditions, existing_ids)
 
-    # Validate the rule in-memory before touching the file.
-    catalog, routing, budget = _load_all()
+    # Validate the rule in-memory before touching the file (clear error, no traceback).
     trial = json.loads(json.dumps(routing))  # deep copy
     trial["rules"].append(rule)
     compiler.validate_policies(catalog, trial, budget)
