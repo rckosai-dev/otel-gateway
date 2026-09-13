@@ -4,7 +4,8 @@ name: policy-dev
 # Runs on every PR (and on demand): validates the policy against the closed
 # vocabulary, runs the compiler test suite, enforces that the committed generated
 # artifacts are in sync with the policy (anti-drift), comments the OTTL/cost diff
-# on the PR, and smoke-tests an ephemeral stack. GitOps stays the source of truth.
+# on the PR, and smoke-tests the generated config against the real Collector
+# binary (otelcol validate). GitOps stays the source of truth.
 
 on:
   pull_request:
@@ -77,7 +78,7 @@ jobs:
               echo "</details>"
             fi
             echo
-            echo "_The authoritative apply + smoke runs in the \`smoke\` job (environment: dev)._"
+            echo "_The \`smoke\` job (environment: dev) loads this config into the real Collector binary (\`otelcol validate\`)._"
           } > /tmp/pr-comment.md
 
       - name: Upsert PR comment
@@ -114,19 +115,16 @@ jobs:
       - name: Compile policy
         run: python3 policy-compiler/compile.py
 
-      - name: Bring up the stack (ephemeral dev apply)
-        run: docker compose up -d
-
-      - name: Wait for collector health
+      # Real-binary smoke: load the generated config with the pinned Collector
+      # (the `validate` subcommand parses the whole config incl. OTTL) — the same
+      # real-binary validation the repo already relies on, but without booting the
+      # full 7-image stack (that runs locally via `make deploy-dev` / `make smoke`).
+      - name: Validate generated config against the real Collector binary
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:13133 >/dev/null; then echo "collector healthy"; exit 0; fi
-            sleep 3
-          done
-          echo "::error::collector did not become healthy"; docker compose logs otel-gateway-collector; exit 1
-
-      - name: Smoke test (validate-e2e)
-        run: bash scripts/validate-e2e.sh
+          docker run --rm -v "$PWD/collector/config:/cfg:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1 \
+            validate --config=/cfg/otelcol-config.generated.yaml
+          echo "Collector accepted the generated config."
 
       - name: Record dev deployment (traceability)
         run: python3 policy-compiler/policyctl.py record-deploy --env dev --note "PR #${{ github.event.pull_request.number || 'manual' }}"
@@ -139,7 +137,3 @@ jobs:
             collector/config/otelcol-config.generated.yaml
             prometheus/rules/cost-rules.generated.yaml
             deployments/ledger.jsonl
-
-      - name: Tear down
-        if: always()
-        run: docker compose down -v

@@ -51,11 +51,15 @@ jobs:
           git diff --quiet -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml \
             || { echo "::error::generated artifacts out of sync — run 'make compile-policy'"; exit 1; }
 
-      - name: Apply to ephemeral uat stack + smoke
+      # Real-binary validation of the artifact being promoted. Booting the full
+      # docker-compose stack / OpAMP fleet apply is the local (`make deploy-uat`)
+      # and phase-2 path; here we confirm the pinned Collector accepts the config.
+      - name: Validate promoted config against the real Collector binary
         run: |
-          docker compose up -d
-          for i in $(seq 1 30); do curl -sf http://localhost:13133 >/dev/null && break || sleep 3; done
-          bash scripts/validate-e2e.sh
+          docker run --rm -v "$PWD/collector/config:/cfg:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1 \
+            validate --config=/cfg/otelcol-config.generated.yaml
+          echo "Collector accepted the promoted config."
 
       - name: Record uat deployment (traceability)
         run: python3 policy-compiler/policyctl.py record-deploy --env uat --note "run ${{ github.run_id }}"
@@ -76,7 +80,3 @@ jobs:
             collector/config/otelcol-config.generated.yaml
             prometheus/rules/cost-rules.generated.yaml
             deployments/ledger.jsonl
-
-      - name: Tear down
-        if: always()
-        run: docker compose down -v

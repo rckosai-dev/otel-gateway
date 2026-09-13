@@ -96,8 +96,10 @@ does (a documented phase-2 extension point).
 Changes are promoted through **dev** and **uat** GitHub Actions pipelines
 (`.github/workflows/policy-*.yml`): dev validates every PR (schema + closed
 vocabulary + golden tests + anti-drift), comments the compiled OTTL/cost diff,
-and smoke-tests an ephemeral stack; uat is gated by a GitHub Environment approval
-and records the apply. **Traceability and rollback are first-class**: every apply
+and smoke-tests the generated config against the real Collector binary
+(`otelcol validate`); uat is gated by a GitHub Environment approval and records
+the apply. (The full docker-compose stack boot runs locally via `make deploy-dev`
+/ `make smoke`.) **Traceability and rollback are first-class**: every apply
 is recorded in `deployments/ledger.jsonl` (env, `policy.version`, git sha, actor,
 timestamp), and rollback is deterministic because each deploy pins a git sha +
 `policy.version` (`make rollback-<env>`, or the `policy-rollback.yml` workflow).
