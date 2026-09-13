@@ -1,0 +1,12 @@
+# Governance: the policy source of truth and its compiler are owned by the
+# platform / observability team. Product teams propose changes via PR (see the
+# comments in policy/service-catalog.yaml). Replace @rckosai-dev with the real
+# platform/observability team handle (e.g. @your-org/observability-platform)
+# once it exists.
+
+/policy/                     @rckosai-dev
+/policy-compiler/            @rckosai-dev
+/collector/config/           @rckosai-dev
+/prometheus/rules/           @rckosai-dev
+/.github/workflows/          @rckosai-dev
+/deployments/                @rckosai-dev

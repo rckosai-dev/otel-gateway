@@ -76,6 +76,32 @@ reviewable in a PR. `policy-compiler/compile.py`:
    routed signal — for auditing "under which policy was this data
    classified."
 
+## Authoring interfaces and promotion (dev → uat)
+
+The policy is authored three interchangeable ways, all converging on the same
+GitOps source of truth and compiler (see
+[docs/governance-authoring.md](governance-authoring.md)):
+
+- a **visual editor** (`tools/policy-editor/`, static/offline) — composes the
+  routing decision matrix and exports YAML → PR;
+- a **CLI** (`policy-compiler/policyctl.py`, `make new-rule`) — wizard,
+  validation, dry-run diff, and rollback;
+- **hand-edited YAML** + PR.
+
+The routing rules are interpreted **generically** from a closed condition
+vocabulary (`policy-compiler/conditions.json`), so composing a new rule never
+requires editing the compiler — only adding a brand-new condition *primitive*
+does (a documented phase-2 extension point).
+
+Changes are promoted through **dev** and **uat** GitHub Actions pipelines
+(`.github/workflows/policy-*.yml`): dev validates every PR (schema + closed
+vocabulary + golden tests + anti-drift), comments the compiled OTTL/cost diff,
+and smoke-tests an ephemeral stack; uat is gated by a GitHub Environment approval
+and records the apply. **Traceability and rollback are first-class**: every apply
+is recorded in `deployments/ledger.jsonl` (env, `policy.version`, git sha, actor,
+timestamp), and rollback is deterministic because each deploy pins a git sha +
+`policy.version` (`make rollback-<env>`, or the `policy-rollback.yml` workflow).
+
 ## Production path for dynamic management: OpAMP
 
 The demo uses a pragmatic "poor man's OpAMP" mechanism: periodically run
@@ -98,7 +124,8 @@ Not implemented in this project (out of scope for a local demo), but it's
 the natural next step documented here to make clear the policy-compiler was
 already designed to be compatible with that evolution (it already produces
 a versioned configuration artifact, independent of the distribution
-mechanism).
+mechanism). For the full GitOps-vs-control-plane trade-off and the concrete
+OpAMP adoption path, see [docs/control-plane-comparison.md](control-plane-comparison.md).
 
 ## Routing decisions — see docs/routing-policy.md
 

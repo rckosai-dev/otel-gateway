@@ -1,0 +1,82 @@
+name: policy-uat
+
+# UAT pipeline. Fires when a policy change lands on the default branch (or on
+# demand). The `deploy` job targets the `uat` GitHub Environment, so it waits for
+# the required-reviewer approval configured on that environment (Settings →
+# Environments → uat) before applying. Every apply is recorded in the deployment
+# ledger (traceability) and the versioned artifact is published; rollback is
+# handled by .github/workflows/policy-rollback.yml.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "policy/**"
+      - "policy-compiler/**"
+      - "collector/config/**"
+      - "prometheus/rules/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write # to commit the ledger line back (traceability)
+
+concurrency:
+  group: policy-uat
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: uat # <- approval gate (required reviewers) lives here
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r policy-compiler/requirements.txt pytest
+
+      - name: Validate + tests
+        run: |
+          python3 policy-compiler/policyctl.py validate
+          python3 -m pytest policy-compiler/tests/ -q
+
+      - name: Compile + anti-drift check
+        run: |
+          python3 policy-compiler/compile.py
+          git diff --quiet -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml \
+            || { echo "::error::generated artifacts out of sync — run 'make compile-policy'"; exit 1; }
+
+      - name: Apply to ephemeral uat stack + smoke
+        run: |
+          docker compose up -d
+          for i in $(seq 1 30); do curl -sf http://localhost:13133 >/dev/null && break || sleep 3; done
+          bash scripts/validate-e2e.sh
+
+      - name: Record uat deployment (traceability)
+        run: python3 policy-compiler/policyctl.py record-deploy --env uat --note "run ${{ github.run_id }}"
+
+      - name: Commit ledger update
+        run: |
+          git config user.name "otel-gateway-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add deployments/ledger.jsonl
+          git commit -m "chore(deploy): record uat deployment [skip ci]" || echo "nothing to commit"
+          git push || echo "::warning::could not push ledger (branch protection?) — ledger is still in the uploaded artifact"
+
+      - name: Publish versioned artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-uat-${{ github.sha }}
+          path: |
+            collector/config/otelcol-config.generated.yaml
+            prometheus/rules/cost-rules.generated.yaml
+            deployments/ledger.jsonl
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

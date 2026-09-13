@@ -1,0 +1,68 @@
+name: policy-rollback
+
+# On-demand rollback. Restores policy/ + the generated artifacts to a previous
+# policy.version (or git sha) from the deployment ledger, records the rollback,
+# and commits it back. Re-apply happens on the next deploy (the uat pipeline, or
+# `make deploy-<env>`). Deterministic because every deploy pins a git sha +
+# policy.version in deployments/ledger.jsonl.
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment to roll back"
+        type: choice
+        options: [dev, uat]
+        required: true
+      to:
+        description: "Target policy.version or git sha (blank = previous deploy for env)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env }} # reuse the same approval gate as deploys
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r policy-compiler/requirements.txt
+
+      - name: Roll back policy + artifacts
+        run: |
+          python3 policy-compiler/policyctl.py rollback --env "${{ inputs.env }}" \
+            ${{ inputs.to && format('--to {0}', inputs.to) || '' }} --yes --actor "${{ github.actor }}"
+
+      - name: Validate restored policy
+        run: |
+          python3 policy-compiler/policyctl.py validate
+          python3 policy-compiler/compile.py
+          git diff --quiet -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml \
+            || { echo "::error::restored artifacts inconsistent"; exit 1; }
+
+      - name: Commit rollback
+        run: |
+          git config user.name "otel-gateway-ci"
+          git config user.email "ci@users.noreply.github.com"
+          git add policy deployments/ledger.jsonl collector/config prometheus/rules
+          git commit -m "revert(policy): rollback ${{ inputs.env }} to ${{ inputs.to || 'previous' }} [skip ci]" || echo "nothing to commit"
+          git push || echo "::warning::could not push rollback commit (branch protection?)"
+
+      - name: Publish rolled-back artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-rollback-${{ inputs.env }}-${{ github.run_id }}
+          path: |
+            collector/config/otelcol-config.generated.yaml
+            prometheus/rules/cost-rules.generated.yaml
+            deployments/ledger.jsonl
