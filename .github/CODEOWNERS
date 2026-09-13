@@ -1,8 +1,16 @@
-# Governance: the policy source of truth and its compiler are owned by the
-# platform / observability team. Product teams propose changes via PR (see the
-# comments in policy/service-catalog.yaml). Replace @rckosai-dev with the real
-# platform/observability team handle (e.g. @your-org/observability-platform)
-# once it exists.
+# Governance ownership: the policy source of truth, its compiler and the
+# promotion pipelines are owned by @rckosai-dev. Product teams propose changes
+# via PR (see the comments in policy/service-catalog.yaml).
+#
+# This is a personal-account repo, so code owners must be individual GitHub
+# users with write access (GitHub teams, @org/team-slug, exist only under an
+# Organization). To hand ownership to a platform/observability *team*, move the
+# repo into an Organization, create the team, then replace the owners below with
+# its @org/team-slug. Add more users by listing them on a line: `/path @a @b`.
+#
+# NOTE: CODEOWNERS only auto-requests review. To enforce it, enable a branch
+# protection rule on `main` with "Require review from Code Owners"
+# (Settings -> Branches).
 
 /policy/                     @rckosai-dev
 /policy-compiler/            @rckosai-dev

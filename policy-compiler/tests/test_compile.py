@@ -141,3 +141,23 @@ def test_wrong_value_type_is_rejected():
 def test_current_policies_validate_clean():
     catalog, routing, budget = _policies()
     m.validate_policies(catalog, routing, budget)  # must not raise
+
+
+def test_empty_rule_id_raises_friendly_valueerror():
+    """Regression: an empty rule id must surface as a clean ValueError, not a raw
+    jsonschema.ValidationError traceback (as the new-rule wizard once produced)."""
+    catalog, routing, budget = _policies()
+    bad = copy.deepcopy(routing)
+    bad["rules"].append({"id": "", "when": {"span_status": "ERROR"},
+                         "decision": "warm", "reason": "x"})
+    with pytest.raises(ValueError):
+        m.validate_policies(catalog, bad, budget)
+
+
+def test_invalid_enum_value_raises_valueerror():
+    catalog, routing, budget = _policies()
+    bad = copy.deepcopy(routing)
+    bad["rules"].append({"id": "x", "when": {"span_status": "info"},
+                         "decision": "warm", "reason": "x"})
+    with pytest.raises(ValueError):
+        m.validate_policies(catalog, bad, budget)
