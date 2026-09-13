@@ -39,9 +39,14 @@ jobs:
         run: pip install -r policy-compiler/requirements.txt
 
       - name: Roll back policy + artifacts
+        env:
+          ENVIRONMENT: ${{ inputs.env }}
+          TO: ${{ inputs.to }}
+          ACTOR: ${{ github.actor }}
         run: |
-          python3 policy-compiler/policyctl.py rollback --env "${{ inputs.env }}" \
-            ${{ inputs.to && format('--to {0}', inputs.to) || '' }} --yes --actor "${{ github.actor }}"
+          ARGS=""
+          if [ -n "$TO" ]; then ARGS="--to $TO"; fi
+          python3 policy-compiler/policyctl.py rollback --env "$ENVIRONMENT" $ARGS --yes --actor "$ACTOR"
 
       - name: Validate restored policy
         run: |
@@ -51,11 +56,14 @@ jobs:
             || { echo "::error::restored artifacts inconsistent"; exit 1; }
 
       - name: Commit rollback
+        env:
+          ENVIRONMENT: ${{ inputs.env }}
+          TO: ${{ inputs.to }}
         run: |
           git config user.name "otel-gateway-ci"
           git config user.email "ci@users.noreply.github.com"
           git add policy deployments/ledger.jsonl collector/config prometheus/rules
-          git commit -m "revert(policy): rollback ${{ inputs.env }} to ${{ inputs.to || 'previous' }} [skip ci]" || echo "nothing to commit"
+          git commit -m "revert(policy): rollback ${ENVIRONMENT} to ${TO:-previous} [skip ci]" || echo "nothing to commit"
           git push || echo "::warning::could not push rollback commit (branch protection?)"
 
       - name: Publish rolled-back artifact
