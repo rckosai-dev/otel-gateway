@@ -15,7 +15,10 @@
         "required": ["id", "when", "reason"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
-          "when": {"type": "object"},
+          "when": {
+            "type": "object",
+            "description": "Match conditions. Keys must come from the closed vocabulary in policy-compiler/conditions.json (compliance_hold, service_tier, log_severity, span_status, http_status_gte, metric_is_slo_relevant, over_budget, log_severity_not_in, span_status_not) plus any_of/all_of groups whose items are condition objects or the literal true (always-match). The vocabulary and value types are enforced at compile time by a schema generated from conditions.json (see compile.build_when_schema)."
+          },
           "decision": {"type": "string", "enum": ["hot", "warm", "drop", "downgrade_one_level"]},
           "decision_by_tier": {
             "type": "object",

@@ -1,0 +1,142 @@
+name: policy-dev
+
+# DEV pipeline for governance policy changes.
+# Runs on every PR (and on demand): validates the policy against the closed
+# vocabulary, runs the compiler test suite, enforces that the committed generated
+# artifacts are in sync with the policy (anti-drift), comments the OTTL/cost diff
+# on the PR, and smoke-tests the generated config against the real Collector
+# binary (otelcol validate). GitOps stays the source of truth.
+
+on:
+  pull_request:
+    paths:
+      - "policy/**"
+      - "policy-compiler/**"
+      - "collector/config/**"
+      - "prometheus/rules/**"
+      - "tools/policy-editor/**"
+      - ".github/workflows/policy-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base ref to diff generated artifacts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r policy-compiler/requirements.txt pytest
+
+      - name: Validate policies (schema + closed vocabulary + integrity)
+        run: python3 policy-compiler/policyctl.py validate
+
+      - name: Compiler tests (golden / behavior-preserving)
+        run: python3 -m pytest policy-compiler/tests/ -q
+
+      - name: Anti-drift — generated artifacts must match policy
+        run: |
+          python3 policy-compiler/compile.py
+          if ! git diff --quiet -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml; then
+            echo "::error::Generated artifacts are stale. Run 'make compile-policy' and commit the result."
+            git --no-pager diff -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml
+            exit 1
+          fi
+          echo "Generated artifacts are in sync with policy."
+
+      - name: Build OTTL / cost diff for PR comment
+        if: github.event_name == 'pull_request'
+        id: diff
+        run: |
+          BASE="origin/${{ github.base_ref }}"
+          {
+            echo "### 🛰️ Governance policy — dev check"
+            echo
+            echo '```'
+            python3 policy-compiler/policyctl.py validate
+            echo '```'
+            echo
+            DIFF="$(git --no-pager diff "$BASE"...HEAD -- collector/config/otelcol-config.generated.yaml prometheus/rules/cost-rules.generated.yaml)"
+            if [ -z "$DIFF" ]; then
+              echo "_No change to the compiled OTTL / Prometheus rules._"
+            else
+              echo "<details><summary>Compiled OTTL / cost-rules diff vs base</summary>"
+              echo
+              echo '```diff'
+              echo "$DIFF" | head -c 60000
+              echo '```'
+              echo
+              echo "</details>"
+            fi
+            echo
+            echo "_The \`smoke\` job (environment: dev) loads this config into the real Collector binary (\`otelcol validate\`)._"
+          } > /tmp/pr-comment.md
+
+      - name: Upsert PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/pr-comment.md', 'utf8');
+            const marker = '<!-- policy-dev-comment -->';
+            const full = body + '\n' + marker;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body: full });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: full });
+            }
+
+  smoke:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install -r policy-compiler/requirements.txt
+
+      - name: Compile policy
+        run: python3 policy-compiler/compile.py
+
+      # Real-binary smoke: load the generated config with the pinned Collector
+      # (the `validate` subcommand parses the whole config incl. OTTL) — the same
+      # real-binary validation the repo already relies on, but without booting the
+      # full 7-image stack (that runs locally via `make deploy-dev` / `make smoke`).
+      - name: Validate generated config against the real Collector binary
+        run: |
+          docker run --rm -v "$PWD/collector/config:/cfg:ro" \
+            otel/opentelemetry-collector-contrib:0.102.1 \
+            validate --config=/cfg/otelcol-config.generated.yaml
+          echo "Collector accepted the generated config."
+
+      - name: Record dev deployment (traceability)
+        env:
+          PR_NUM: ${{ github.event.pull_request.number || 'manual' }}
+        run: |
+          python3 policy-compiler/policyctl.py record-deploy --env dev --note "PR #${PR_NUM}"
+
+      - name: Upload versioned artifact + ledger
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-dev-${{ github.sha }}
+          path: |
+            collector/config/otelcol-config.generated.yaml
+            prometheus/rules/cost-rules.generated.yaml
+            deployments/ledger.jsonl

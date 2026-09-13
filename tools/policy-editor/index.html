@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OTel Gateway — Policy Editor</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="style.css" />
+  <script src="vendor/js-yaml.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◧</span>
+      <div>
+        <h1>Governance Policy Editor</h1>
+        <p class="sub">Compose routing rules visually · exports YAML → PR (GitOps stays the source of truth)</p>
+      </div>
+    </div>
+    <div class="load-state" id="loadState">loading…</div>
+  </header>
+
+  <div class="note" id="offlineNote" hidden>
+    Could not auto-load the policy files (you're probably opening this from
+    <code>file://</code>). Serve the repo with <code>make policy-editor</code> and open
+    <code>http://localhost:8000/tools/policy-editor/</code>, or load the files manually:
+    <div class="manual-load">
+      <label>conditions.json <input type="file" id="fileConditions" accept=".json"></label>
+      <label>routing-policy.yaml <input type="file" id="fileRouting" accept=".yaml,.yml"></label>
+      <label>service-catalog.yaml <input type="file" id="fileCatalog" accept=".yaml,.yml"></label>
+    </div>
+  </div>
+
+  <main>
+    <section class="rules-col">
+      <div class="section-head">
+        <h2>Routing rules <span class="hint">first match wins ↓</span></h2>
+        <button class="btn primary" id="addRule">+ Add rule</button>
+      </div>
+      <div id="rules"></div>
+      <div class="default-decision">
+        default_decision:
+        <select id="defaultDecision"></select>
+        <span class="hint">applied if no rule matches</span>
+      </div>
+    </section>
+
+    <aside class="side-col">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Export</h2>
+          <div class="valid" id="validBadge">—</div>
+        </div>
+        <p class="hint">The authoritative OTTL &amp; cost diff comes from
+          <code>policyctl compile --dry-run</code> and the dev pipeline — this editor
+          composes and validates the policy.</p>
+        <div class="btn-row">
+          <button class="btn" id="copyYaml">Copy routing-policy.yaml</button>
+          <button class="btn" id="downloadYaml">Download YAML</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="copyRuleJson">Copy selected rule (JSON)</button>
+        </div>
+        <p class="hint">Rule JSON pairs with
+          <code>policyctl new-rule --from-json &lt;file&gt; --before &lt;id&gt;</code>.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Preview</h2>
+        <pre id="yamlPreview" class="preview"></pre>
+      </div>
+
+      <div class="panel">
+        <h2>Service catalog <span class="hint">(context)</span></h2>
+        <div id="catalog" class="catalog"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -36,6 +36,7 @@ from jsonschema import validate as jsonschema_validate
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POLICY_DIR = REPO_ROOT / "policy"
 SCHEMA_DIR = Path(__file__).resolve().parent / "schema"
+CONDITIONS_PATH = Path(__file__).resolve().parent / "conditions.json"
 OUTPUT_PATH = REPO_ROOT / "collector" / "config" / "otelcol-config.generated.yaml"
 PROMETHEUS_RULES_PATH = REPO_ROOT / "prometheus" / "rules" / "cost-rules.generated.yaml"
 
@@ -65,6 +66,21 @@ def validate_policies(catalog: dict, routing: dict, budget: dict) -> None:
     jsonschema_validate(routing, load_yaml_json(SCHEMA_DIR / "routing-policy.schema.json"))
     jsonschema_validate(budget, load_yaml_json(SCHEMA_DIR / "cost-budget.schema.json"))
 
+    # Enforce the closed `when` vocabulary from conditions.json (single source of
+    # truth). This is what makes new rules authored via CLI/editor/YAML safe to
+    # compile: an unknown condition or a wrong value type fails here, not silently
+    # at runtime.
+    conditions = load_conditions()
+    when_schema = build_when_schema(conditions)
+    for rule in routing["rules"]:
+        try:
+            jsonschema_validate(rule.get("when", {}), when_schema)
+        except Exception as exc:  # noqa: BLE001 — re-raise with rule context
+            raise ValueError(
+                f"routing-policy.yaml: rule '{rule.get('id', '?')}' has an invalid "
+                f"when-clause: {exc}"
+            ) from exc
+
     names = [s["name"] for s in catalog["services"]]
     if len(names) != len(set(names)):
         raise ValueError("service-catalog.yaml: duplicate service names")
@@ -78,6 +94,61 @@ def validate_policies(catalog: dict, routing: dict, budget: dict) -> None:
 def load_yaml_json(path: Path) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+_CONDITIONS_CACHE = None
+
+
+def load_conditions() -> dict:
+    """The canonical `when`/`decision` vocabulary (policy-compiler/conditions.json),
+    shared by the compiler, policyctl and the web editor."""
+    global _CONDITIONS_CACHE
+    if _CONDITIONS_CACHE is None:
+        with open(CONDITIONS_PATH, "r", encoding="utf-8") as f:
+            _CONDITIONS_CACHE = json.load(f)
+    return _CONDITIONS_CACHE
+
+
+def _value_json_schema(value_spec: dict) -> dict:
+    t = value_spec.get("type")
+    if t == "boolean":
+        return {"type": "boolean"}
+    if t == "integer":
+        return {"type": "integer"}
+    if t == "number":
+        return {"type": "number"}
+    if t == "string":
+        s = {"type": "string"}
+        if "enum" in value_spec:
+            s["enum"] = value_spec["enum"]
+        return s
+    if t == "array":
+        item = {"type": "string"}
+        if "item_enum" in value_spec:
+            item["enum"] = value_spec["item_enum"]
+        return {"type": "array", "items": item, "minItems": 1}
+    return {}
+
+
+def build_when_schema(conditions: dict) -> dict:
+    """A JSON Schema for a routing rule's `when`, generated from conditions.json —
+    so the closed condition vocabulary is enforced from a single source of truth
+    (no hand-maintained duplicate). Keys must be known conditions; values must
+    match their declared type; any_of/all_of hold condition objects or the
+    literal `true` (an always-match catch-all)."""
+    atom_props = {k: _value_json_schema(spec["value"])
+                  for k, spec in conditions["conditions"].items()}
+    atom_schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "minProperties": 1,
+        "properties": atom_props,
+    }
+    group_items = {"anyOf": [atom_schema, {"type": "boolean"}]}
+    when_props = dict(atom_props)
+    when_props["any_of"] = {"type": "array", "items": group_items, "minItems": 1}
+    when_props["all_of"] = {"type": "array", "items": group_items, "minItems": 1}
+    return {"type": "object", "additionalProperties": False, "properties": when_props}
 
 
 def policy_version(catalog: dict, routing: dict, budget: dict) -> str:
@@ -130,62 +201,200 @@ def build_tagging_statements(catalog: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
-# telemetry.tier decision — emulates "first matching rule wins" via
-# resource.attributes["telemetry.tier"] == nil guards between steps, since
-# OTTL has no native if/elif.
+# telemetry.tier decision — GENERIC engine.
+#
+# The routing rules in routing-policy.yaml are interpreted generically (driven
+# by conditions.json), instead of being hard-coded here. This is what lets a
+# new rule be authored purely as config (via CLI/editor/YAML) and compiled to
+# OTTL without editing Python.
+#
+# "First matching rule wins" is emulated with resource.attributes["telemetry.tier"]
+# == nil guards between classification rules, since OTTL has no native if/elif.
+# Two rule kinds are supported:
+#   * classification rules: set telemetry.tier if not yet set (first-match-wins);
+#   * modifier rules (decision: downgrade_one_level): applied after all
+#     classification rules, transforming an already-set tier one level down.
 # ---------------------------------------------------------------------------
 
-SIGNAL_ERROR_CONDITION = {
-    "log": 'severity_number >= SEVERITY_NUMBER_ERROR',
-    "span": 'status.code == STATUS_CODE_ERROR or attributes["http.status_code"] >= 500',
-    # context: metric — the metric's own name is just "name", not "metric.name".
-    "metric": 'IsMatch(name, "^(.*_latency_seconds|.*_error_rate|.*_request_count)$")',
-}
 
-BASE_TIER_DECISION = {"critical": "warm", "standard": "warm", "low": "drop"}
-ERROR_UPGRADE_DECISION = {"critical": "hot", "standard": "hot", "low": "warm"}
+def is_modifier_rule(rule: dict) -> bool:
+    return rule.get("decision") == "downgrade_one_level"
 
 
-def build_tier_decision_statements(signal: str, over_budget_services: set) -> list:
-    error_cond = SIGNAL_ERROR_CONDITION[signal]
+def _render_atom(spec: dict, value, conditions: dict):
+    """Render a single condition atom to an OTTL predicate fragment (or None if
+    it produces no constraint). Renderers live here because exact OTTL is
+    correctness-critical; conditions.json declares which renderer each uses."""
+    render = spec.get("render")
+    if render == "resource_bool":
+        return f'resource.attributes["{spec["attr"]}"] == {"true" if value else "false"}'
+    if render == "resource_str_in":
+        vals = value if isinstance(value, list) else [value]
+        return " or ".join(f'resource.attributes["{spec["attr"]}"] == "{v}"' for v in vals)
+    if render == "severity_min":
+        order = conditions["severity_order"]
+        sev = min(value, key=lambda s: order.index(s))
+        return f"severity_number >= SEVERITY_NUMBER_{sev}"
+    if render == "span_status":
+        return f"status.code == STATUS_CODE_{value}"
+    if render == "http_gte":
+        return f'attributes["http.status_code"] >= {value}'
+    if render == "metric_slo":
+        return f'IsMatch(name, "{spec["pattern"]}")' if value else None
+    # compile-time (over_budget) and negate_family renderers are handled in the
+    # modifier path, not as positive classification atoms.
+    return None
+
+
+def _atom_ottl(key: str, value, signal: str, conditions: dict):
+    """OTTL for one condition atom under a given signal context, or None when the
+    condition does not apply to that signal (e.g. span_status under a log pipeline)."""
+    spec = conditions["conditions"].get(key)
+    if spec is None:
+        raise ValueError(f"unknown condition '{key}' (not in conditions.json vocabulary)")
+    if signal not in spec.get("signals", []):
+        return None
+    return _render_atom(spec, value, conditions)
+
+
+def _compile_when(when: dict, signal: str, conditions: dict):
+    """Compile a rule's `when` into an OTTL predicate for one signal, or None when
+    it imposes no constraint for that signal. Top-level keys are AND-ed; any_of/
+    all_of form a parenthesised OR/AND group; the literal `true` in an any_of
+    means 'always match' (catch-all). Compile-time (over_budget) and negate_family
+    keys are handled by the modifier path and ignored here."""
+    if not when:
+        return None
+    and_terms = []
+    for key, value in when.items():
+        if key in ("any_of", "all_of"):
+            joiner = " or " if key == "any_of" else " and "
+            sub = []
+            always_true = False
+            for item in value:
+                if item is True:
+                    always_true = True
+                    break
+                for k, v in item.items():
+                    atom = _atom_ottl(k, v, signal, conditions)
+                    if atom is not None:
+                        sub.append(atom)
+            if key == "any_of" and always_true:
+                continue  # any_of contains true → no constraint
+            if sub:
+                and_terms.append("(" + joiner.join(sub) + ")")
+        else:
+            spec = conditions["conditions"].get(key)
+            if spec is None:
+                raise ValueError(f"unknown condition '{key}'")
+            if spec.get("compile_time") or spec.get("negates_family"):
+                continue  # modifier-only keys
+            atom = _atom_ottl(key, value, signal, conditions)
+            if atom is not None:
+                and_terms.append(atom)
+    return " and ".join(and_terms) if and_terms else None
+
+
+def _set_tier_stmt(decision: str, tier, when_pred, add_nil_guard: bool) -> str:
+    parts = []
+    if add_nil_guard:
+        parts.append('resource.attributes["telemetry.tier"] == nil')
+    if tier is not None:
+        parts.append(f'resource.attributes["service.tier"] == "{tier}"')
+    if when_pred:
+        parts.append(when_pred)
+    where = " and ".join(parts) if parts else "true"
+    return f'set(resource.attributes["telemetry.tier"], "{decision}") where {where}'
+
+
+def _classification_statements(rule: dict, signal: str, conditions: dict, add_nil_guard: bool) -> list:
+    when_pred = _compile_when(rule.get("when", {}), signal, conditions)
+    aliases = conditions["decisions"]["aliases"]
+    out = []
+    if "decision" in rule:
+        out.append(_set_tier_stmt(rule["decision"], None, when_pred, add_nil_guard))
+    elif "decision_by_tier" in rule:
+        for tier, dec in rule["decision_by_tier"].items():
+            out.append(_set_tier_stmt(aliases.get(dec, dec), tier, when_pred, add_nil_guard))
+    return out
+
+
+def _family_inner_predicate(routing: dict, signal: str, family: str, conditions: dict):
+    """Reuse the (unparenthesised) OR predicate of the first classification rule
+    whose any_of carries atoms of `family`, so a downgrade negates exactly the
+    same error/SLO predicate an upgrade rule matches — including atoms the
+    downgrade rule did not itself list (e.g. http.status_code for spans)."""
+    for rule in routing["rules"]:
+        if is_modifier_rule(rule):
+            continue
+        anyof = rule.get("when", {}).get("any_of")
+        if not anyof:
+            continue
+        atoms, has_family = [], False
+        for item in anyof:
+            if item is True:
+                continue
+            for k, v in item.items():
+                if conditions["conditions"].get(k, {}).get("family") == family:
+                    has_family = True
+                    atom = _atom_ottl(k, v, signal, conditions)
+                    if atom is not None:
+                        atoms.append(atom)
+        if has_family:
+            return " or ".join(atoms) if atoms else None
+    return None
+
+
+def _modifier_statements(rule: dict, signal: str, over_budget_services: set,
+                         routing: dict, conditions: dict) -> list:
+    if rule.get("decision") != "downgrade_one_level":
+        return []  # only the downgrade modifier is supported in this phase
+    when = rule.get("when", {})
+    services = set(over_budget_services) if when.get("over_budget") else set()
+
+    neg = None
+    for key in when:
+        family = conditions["conditions"].get(key, {}).get("negates_family")
+        if family:
+            inner = _family_inner_predicate(routing, signal, family, conditions)
+            if inner:
+                neg = f"not ({inner})"
+            break
+
     stmts = []
-
-    # 1. Compliance override — always warm, takes priority over everything.
-    stmts.append(
-        'set(resource.attributes["telemetry.tier"], "warm") '
-        'where resource.attributes["compliance_hold"] == true'
-    )
-
-    # 2. Error/SLO-relevant signal moves up a level (only if not already decided by rule 1).
-    for tier, decision in ERROR_UPGRADE_DECISION.items():
-        stmts.append(
-            f'set(resource.attributes["telemetry.tier"], "{decision}") '
-            f'where resource.attributes["telemetry.tier"] == nil '
-            f'and resource.attributes["service.tier"] == "{tier}" '
-            f'and ({error_cond})'
-        )
-
-    # 3. Base classification by criticality tier (catch-all, only if not yet decided).
-    for tier, decision in BASE_TIER_DECISION.items():
-        stmts.append(
-            f'set(resource.attributes["telemetry.tier"], "{decision}") '
-            f'where resource.attributes["telemetry.tier"] == nil '
-            f'and resource.attributes["service.tier"] == "{tier}"'
-        )
-
-    # 4. Dynamic downgrade under budget pressure (poor man's OpAMP): only
-    #    applied to services flagged over_budget in this compilation, and
-    #    never to error signals (diagnosability always beats cost).
-    for service in sorted(over_budget_services):
-        svc_cond = f'resource.attributes["service.name"] == "{service}"'
+    for service in sorted(services):
         for from_tier, to_tier in TIER_DOWNGRADE.items():
+            parts = [
+                f'resource.attributes["service.name"] == "{service}"',
+                f'resource.attributes["telemetry.tier"] == "{from_tier}"',
+            ]
+            if neg:
+                parts.append(neg)
             stmts.append(
-                f'set(resource.attributes["telemetry.tier"], "{to_tier}") '
-                f'where {svc_cond} '
-                f'and resource.attributes["telemetry.tier"] == "{from_tier}" '
-                f'and not ({error_cond})'
+                f'set(resource.attributes["telemetry.tier"], "{to_tier}") where '
+                + " and ".join(parts)
             )
+    return stmts
 
+
+def build_tier_decision_statements(routing: dict, signal: str, over_budget_services: set,
+                                   conditions: dict = None) -> list:
+    conditions = conditions or load_conditions()
+    stmts = []
+    # Pass 1: classification rules, in order (first-match-wins). The first rule
+    # to emit needs no nil-guard (nothing is set yet); subsequent rules do.
+    emitted = False
+    for rule in routing["rules"]:
+        if is_modifier_rule(rule):
+            continue
+        rule_stmts = _classification_statements(rule, signal, conditions, add_nil_guard=emitted)
+        if rule_stmts:
+            stmts.extend(rule_stmts)
+            emitted = True
+    # Pass 2: modifier rules, in order (applied after classification).
+    for rule in routing["rules"]:
+        if is_modifier_rule(rule):
+            stmts.extend(_modifier_statements(rule, signal, over_budget_services, routing, conditions))
     return stmts
 
 
@@ -232,13 +441,13 @@ def build_config(catalog: dict, routing: dict, budget: dict, version: str,
     tagging = build_tagging_statements(catalog)
 
     tag_logs = transform_processor_block("log", "log_statements", tagging,
-                                          build_tier_decision_statements("log", over_budget_services), version,
+                                          build_tier_decision_statements(routing, "log", over_budget_services), version,
                                           item_context="log")
     tag_traces = transform_processor_block("span", "trace_statements", tagging,
-                                            build_tier_decision_statements("span", over_budget_services), version,
+                                            build_tier_decision_statements(routing, "span", over_budget_services), version,
                                             item_context="span")
     tag_metrics = transform_processor_block("metric", "metric_statements", tagging,
-                                             build_tier_decision_statements("metric", over_budget_services), version,
+                                             build_tier_decision_statements(routing, "metric", over_budget_services), version,
                                              item_context="datapoint")
 
     def routing_table(signal_pipeline_prefix: str) -> dict:
@@ -419,6 +628,21 @@ def build_prometheus_rules(budget: dict, cost_per_gb_hot: float, cost_per_gb_war
     return {"groups": [{"name": "otel-cost-governance", "interval": "30s", "rules": rules}]}
 
 
+def compile_all(catalog: dict, routing: dict, budget: dict, over_budget_services: set = None,
+                cost_per_gb_hot: float = DEFAULT_COST_PER_GB_HOT,
+                cost_per_gb_warm: float = DEFAULT_COST_PER_GB_WARM) -> dict:
+    """Validate the three policies and compile them into the Collector config and
+    Prometheus recording rules. Returns {config, prometheus_rules, version}.
+    The single reusable entry point for the compiler — used by main(), by
+    policyctl (dry-run/diff) and by CI."""
+    over_budget_services = over_budget_services or set()
+    validate_policies(catalog, routing, budget)
+    version = policy_version(catalog, routing, budget)
+    config = build_config(catalog, routing, budget, version, over_budget_services)
+    prometheus_rules = build_prometheus_rules(budget, cost_per_gb_hot, cost_per_gb_warm)
+    return {"config": config, "prometheus_rules": prometheus_rules, "version": version}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prometheus-url", default=None,
@@ -436,16 +660,17 @@ def main():
     routing = load_yaml(POLICY_DIR / "routing-policy.yaml")
     budget = load_yaml(POLICY_DIR / "cost-budget.yaml")
 
-    validate_policies(catalog, routing, budget)
-    version = policy_version(catalog, routing, budget)
-
     over_budget_services = set()
     if args.prometheus_url:
         over_budget_services = fetch_over_budget_services(args.prometheus_url)
         if over_budget_services:
             print(f"[policy-compiler] dynamic downgrade applied to: {sorted(over_budget_services)}")
 
-    config = build_config(catalog, routing, budget, version, over_budget_services)
+    result = compile_all(catalog, routing, budget, over_budget_services,
+                         args.cost_per_gb_hot, args.cost_per_gb_warm)
+    version = result["version"]
+    config = result["config"]
+    rules = result["prometheus_rules"]
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -461,7 +686,6 @@ def main():
 
     print(f"[policy-compiler] OK — policy.version={version} -> {output_path.relative_to(REPO_ROOT)}")
 
-    rules = build_prometheus_rules(budget, args.cost_per_gb_hot, args.cost_per_gb_warm)
     rules_path = Path(args.prometheus_rules_output)
     rules_path.parent.mkdir(parents=True, exist_ok=True)
     rules_header = (

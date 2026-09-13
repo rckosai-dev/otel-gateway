@@ -14,7 +14,15 @@ detailed architecture at [`docs/architecture.md`](docs/architecture.md).
 - **`policy/`** — service catalog, routing matrix, and cost budgets. The
   single source of truth, versioned in Git.
 - **`policy-compiler/`** — compiles the policy into real Collector config
-  (OTTL) + Prometheus cost recording rules.
+  (OTTL) + Prometheus cost recording rules. Routing rules are interpreted
+  **generically** from a closed vocabulary (`conditions.json`), and
+  `policyctl.py` is the CLI for authoring/validating/rolling back rules.
+- **`tools/policy-editor/`** — a static, offline **visual editor** for the
+  routing decision matrix (composes rules → exports YAML/PR).
+- **`.github/workflows/`** — **dev/uat pipelines** (`policy-dev.yml`,
+  `policy-uat.yml`, `policy-rollback.yml`) with validation, anti-drift, OTTL/cost
+  diff comments, gated uat promotion, and rollback.
+- **`deployments/`** — append-only **deployment ledger** (traceability + rollback).
 - **`collector/`** — Gateway Collector: tagging, routing (`routingconnector`),
   `tail_sampling`, counting by service/team/cost_center.
 - **`telemetry-generator/`** — synthetic load (8 services, a realistic
@@ -38,6 +46,27 @@ make load-smoke  # short load run to check end-to-end connectivity
 Then: Grafana at http://localhost:3000, Prometheus at
 http://localhost:9090, MinIO at http://localhost:9001. Full validation
 flow in [`docs/runbook.md`](docs/runbook.md).
+
+## Interacting with the governance layer (creating rules)
+
+Create/edit governance rules three interchangeable ways — all converge on the
+GitOps source of truth (`policy/*.yaml`) and are promoted through dev → uat with
+traceability and rollback:
+
+```bash
+make policy-editor    # visual editor: http://localhost:8000/tools/policy-editor/
+make new-rule         # CLI wizard (policyctl)
+make policy-validate  # schema + closed vocabulary + integrity
+make policy-tests     # golden / behavior-preserving compiler tests
+make deploy-dev       # compile + apply + record in the deployment ledger
+make deploy-uat       # gated in CI by a GitHub Environment approval
+make rollback-uat     # deterministic rollback (TO=<policy.version|sha> optional)
+make ledger           # show the deployment ledger (traceability)
+```
+
+See [`docs/governance-authoring.md`](docs/governance-authoring.md) for the full
+workflow and [`docs/control-plane-comparison.md`](docs/control-plane-comparison.md)
+for the GitOps-vs-control-plane (OpAMP / Bindplane / Grafana Fleet) trade-offs.
 
 ## State of this development environment
 
