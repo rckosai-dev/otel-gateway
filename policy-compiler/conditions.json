@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "_comment": "Canonical vocabulary for routing-policy.yaml `when` clauses and `decision`s. Single source of truth shared by the compiler (policy-compiler/compile.py), the CLI (policyctl.py), the web editor (tools/policy-editor) and schema validation. Metadata (label/description/signals/value) drives the authoring UIs; `render` selects the compiler's OTTL renderer (kept in Python because exact OTTL is correctness-critical). Adding a NEW condition primitive = add an entry here + implement its `render` in compile.py (a fase-2 extension point).",
+
+  "tiers": ["critical", "standard", "low"],
+  "signals": ["log", "span", "metric"],
+  "severity_order": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"],
+
+  "decisions": {
+    "flat": ["hot", "warm", "drop", "downgrade_one_level"],
+    "by_tier": ["hot", "warm", "drop", "drop-candidate"],
+    "aliases": { "drop-candidate": "drop" }
+  },
+
+  "families": {
+    "error_or_slo": "Error / SLO-relevant signal (any signal type). Used positively by an upgrade rule and negatively by a safe-downgrade rule. The full per-signal family predicate is reused so a downgrade never touches an error/SLO signal, even for signal types the downgrade rule did not explicitly list."
+  },
+
+  "conditions": {
+    "compliance_hold": {
+      "label": "Compliance hold",
+      "description": "Service is under legal/audit retention (from the service catalog). Never dropped.",
+      "signals": ["log", "span", "metric"],
+      "value": { "type": "boolean" },
+      "render": "resource_bool",
+      "attr": "compliance_hold"
+    },
+    "service_tier": {
+      "label": "Service criticality tier",
+      "description": "Match one or more criticality tiers from the service catalog.",
+      "signals": ["log", "span", "metric"],
+      "value": { "type": "array", "item_enum": ["critical", "standard", "low"] },
+      "render": "resource_str_in",
+      "attr": "service.tier"
+    },
+    "log_severity": {
+      "label": "Log severity at or above",
+      "description": "Threshold semantics: matches records whose severity is at or above the LOWEST severity in the list (OTel severity_number ordering). Log signals only.",
+      "signals": ["log"],
+      "family": "error_or_slo",
+      "value": { "type": "array", "item_enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"] },
+      "render": "severity_min"
+    },
+    "span_status": {
+      "label": "Span status code",
+      "description": "Match a span status code (OTTL STATUS_CODE_*). Span signals only.",
+      "signals": ["span"],
+      "family": "error_or_slo",
+      "value": { "type": "string", "enum": ["OK", "ERROR", "UNSET"] },
+      "render": "span_status"
+    },
+    "http_status_gte": {
+      "label": "HTTP status code >=",
+      "description": "Match spans whose http.status_code is at or above this value (e.g. 500 for server errors). Span signals only.",
+      "signals": ["span"],
+      "family": "error_or_slo",
+      "value": { "type": "integer" },
+      "render": "http_gte"
+    },
+    "metric_is_slo_relevant": {
+      "label": "Metric is SLO-relevant",
+      "description": "Match metrics whose name looks SLO-relevant (latency/error-rate/request-count). Metric signals only.",
+      "signals": ["metric"],
+      "family": "error_or_slo",
+      "value": { "type": "boolean" },
+      "render": "metric_slo",
+      "pattern": "^(.*_latency_seconds|.*_error_rate|.*_request_count)$"
+    },
+    "over_budget": {
+      "label": "Service is over budget",
+      "description": "Resolved at compile time from Prometheus (policy:over_budget:by_service). Expands to the set of over-budget services. Used by the budget circuit-breaker downgrade rule.",
+      "signals": ["log", "span", "metric"],
+      "value": { "type": "boolean" },
+      "compile_time": true,
+      "render": "over_budget"
+    },
+    "log_severity_not_in": {
+      "label": "Log severity NOT in",
+      "description": "Negates the error/SLO family for the signal (safe-downgrade guard). Documented as excluding the FULL error/SLO family, not only log severity.",
+      "signals": ["log"],
+      "negates_family": "error_or_slo",
+      "value": { "type": "array", "item_enum": ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"] },
+      "render": "negate_family"
+    },
+    "span_status_not": {
+      "label": "Span status NOT",
+      "description": "Negates the error/SLO family for the signal (safe-downgrade guard). Documented as excluding the FULL error/SLO family, not only span status.",
+      "signals": ["span"],
+      "negates_family": "error_or_slo",
+      "value": { "type": "string", "enum": ["OK", "ERROR", "UNSET"] },
+      "render": "negate_family"
+    }
+  }
+}
