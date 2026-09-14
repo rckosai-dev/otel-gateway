@@ -63,6 +63,12 @@
         </div>
         <p class="hint">Rule JSON pairs with
           <code>policyctl new-rule --from-json &lt;file&gt; --before &lt;id&gt;</code>.</p>
+        <div class="btn-row">
+          <button class="btn" id="previewOttl">Preview compiled OTTL</button>
+        </div>
+        <p class="hint">Authoritative preview needs the local compile server:
+          run <code>policyctl serve</code> and open this page from it.</p>
+        <pre id="ottlPreview" class="preview" hidden></pre>
       </div>
 
       <div class="panel">

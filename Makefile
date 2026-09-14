@@ -1,5 +1,5 @@
 .PHONY: compile-policy up down load logs validate-terraform validate check-parquet cost-report \
-        policy-editor new-rule policy-validate policy-tests deploy-dev deploy-uat \
+        policy-editor policy-serve new-rule policy-validate policy-tests deploy-dev deploy-uat \
         rollback-dev rollback-uat smoke ledger
 
 compile-policy:
@@ -11,6 +11,11 @@ compile-policy:
 policy-editor:
 	@echo "Open http://localhost:8000/tools/policy-editor/  (Ctrl-C to stop)"
 	python3 -m http.server 8000
+
+# Same editor, but with authoritative OTTL preview: policyctl serve adds a
+# /api/compile endpoint the editor's "Preview compiled OTTL" button calls.
+policy-serve:
+	python3 policy-compiler/policyctl.py serve --port 8000
 
 # Interactive rule wizard (or use: policyctl new-rule --from-json rule.json --before <id>)
 new-rule:

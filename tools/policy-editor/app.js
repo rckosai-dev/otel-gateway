@@ -237,15 +237,25 @@ function renderValueInput(spec, a) {
       oninput: e => { a.value = e.target.value === '' ? '' : Number(e.target.value); refreshSide(); } });
   }
   if (t === 'string') {
-    return el('select', { onchange: e => { a.value = e.target.value; refreshSide(); } },
-      (spec.value.enum || []).map(v => option(v, v, a.value === v)));
+    if (spec.value.enum) {
+      return el('select', { onchange: e => { a.value = e.target.value; refreshSide(); } },
+        spec.value.enum.map(v => option(v, v, a.value === v)));
+    }
+    // free string (e.g. a regex): plain text input
+    return el('input', { type: 'text', value: a.value ?? '', placeholder: 'value / regex', style: 'min-width:180px',
+      oninput: e => { a.value = e.target.value; refreshSide(); } });
   }
   if (t === 'array') {
-    const cur = Array.isArray(a.value) ? a.value : [];
-    const sel = el('select', { multiple: 'multiple', size: Math.min(4, (spec.value.item_enum || []).length),
-      onchange: e => { a.value = [...e.target.selectedOptions].map(o => o.value); refreshSide(); } },
-      (spec.value.item_enum || []).map(v => option(v, v, cur.includes(v))));
-    return sel;
+    if (spec.value.item_enum) {
+      const cur = Array.isArray(a.value) ? a.value : [];
+      return el('select', { multiple: 'multiple', size: Math.min(4, spec.value.item_enum.length),
+        onchange: e => { a.value = [...e.target.selectedOptions].map(o => o.value); refreshSide(); } },
+        spec.value.item_enum.map(v => option(v, v, cur.includes(v))));
+    }
+    // open list (e.g. env/region): comma/space separated text
+    const cur = Array.isArray(a.value) ? a.value.join(', ') : '';
+    return el('input', { type: 'text', value: cur, placeholder: 'comma-separated', style: 'min-width:180px',
+      oninput: e => { a.value = e.target.value.split(/[,\s]+/).filter(Boolean); refreshSide(); } });
   }
   return el('span');
 }
@@ -413,6 +423,33 @@ function wireExport() {
     if (!m) return;
     copy(JSON.stringify(modelToRule(m), null, 2), e.target);
   });
+  document.getElementById('previewOttl').addEventListener('click', previewOttl);
+}
+
+async function previewOttl() {
+  const out = document.getElementById('ottlPreview');
+  out.hidden = false;
+  out.textContent = 'compiling…';
+  try {
+    const res = await fetch('/api/compile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routing: buildRoutingDoc() }),
+    });
+    if (!res.ok) {
+      let msg;
+      try { msg = (await res.json()).error; } catch { msg = 'HTTP ' + res.status; }
+      out.textContent = 'Preview error: ' + msg;
+      return;
+    }
+    const data = await res.json();
+    const head = `policy.version: ${data.committed_version} -> ${data.version}\n\n${data.summary}\n\n`;
+    out.textContent = head + (data.diff
+      ? '=== compiled OTTL diff vs committed ===\n' + data.diff
+      : 'No change vs the committed compiled OTTL.');
+  } catch (err) {
+    out.textContent = 'Preview needs the local compile server.\nRun:  policyctl serve\nthen open http://localhost:8000/tools/policy-editor/ and click again.';
+  }
 }
 
 wireExport();
