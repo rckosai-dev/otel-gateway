@@ -255,6 +255,10 @@ def _render_atom(spec: dict, value, conditions: dict):
         return f'attributes["http.status_code"] >= {value}'
     if render == "metric_slo":
         return f'IsMatch(name, "{spec["pattern"]}")' if value else None
+    if render == "name_matches":
+        return f'IsMatch(name, "{value}")'
+    if render == "attr_matches":
+        return f'IsMatch(attributes["{spec["attr"]}"], "{value}")'
     # compile-time (over_budget) and negate_family renderers are handled in the
     # modifier path, not as positive classification atoms.
     return None
