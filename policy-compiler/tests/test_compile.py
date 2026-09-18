@@ -161,3 +161,40 @@ def test_invalid_enum_value_raises_valueerror():
                          "decision": "warm", "reason": "x"})
     with pytest.raises(ValueError):
         m.validate_policies(catalog, bad, budget)
+
+
+def _with_rule(routing, when):
+    r = copy.deepcopy(routing)
+    r["rules"].insert(2, {"id": "p", "when": when, "decision": "warm", "reason": "x"})
+    return r
+
+
+def test_phase2_primitives_compile_and_are_signal_aware():
+    _, routing, _ = _policies()
+
+    # env / region: all signals, list-OR on a resource attribute
+    r = _with_rule(routing, {"any_of": [{"env": ["prod"]}]})
+    for sig in ("log", "span", "metric"):
+        assert any('resource.attributes["deployment.environment"] == "prod"' in s
+                   for s in m.build_tier_decision_statements(r, sig, set()))
+    r = _with_rule(routing, {"any_of": [{"region": ["us-east-1", "eu-west-1"]}]})
+    assert any('resource.attributes["cloud.region"] == "us-east-1" or '
+               'resource.attributes["cloud.region"] == "eu-west-1"' in s
+               for s in m.build_tier_decision_statements(r, "log", set()))
+
+    # metric_name_matches: metric only, custom regex
+    r = _with_rule(routing, {"any_of": [{"metric_name_matches": "^rpc_x$"}]})
+    assert any('IsMatch(name, "^rpc_x$")' in s for s in m.build_tier_decision_statements(r, "metric", set()))
+    assert not any("^rpc_x$" in s for s in m.build_tier_decision_statements(r, "span", set()))
+
+    # http_route_matches: span only
+    r = _with_rule(routing, {"any_of": [{"http_route_matches": "^/healthz$"}]})
+    assert any('IsMatch(attributes["http.route"], "^/healthz$")' in s
+               for s in m.build_tier_decision_statements(r, "span", set()))
+    assert not any("http.route" in s for s in m.build_tier_decision_statements(r, "log", set()))
+
+
+def test_phase2_primitives_validate_against_vocabulary():
+    catalog, routing, budget = _policies()
+    good = _with_rule(routing, {"any_of": [{"env": ["prod"]}, {"http_route_matches": "^/x$"}]})
+    m.validate_policies(catalog, good, budget)  # must not raise

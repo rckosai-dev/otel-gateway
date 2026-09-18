@@ -33,6 +33,10 @@ downgrade_one_level`) or `decision_by_tier`, and a mandatory `reason` (audit).
 | `span_status` | span | OK/ERROR/UNSET | |
 | `http_status_gte` | span | int | e.g. 500 |
 | `metric_is_slo_relevant` | metric | bool | latency/error-rate/request-count names |
+| `env` | all | list | match `deployment.environment` (e.g. prod, staging) |
+| `region` | all | list | match `cloud.region` (e.g. us-east-1) |
+| `metric_name_matches` | metric | string (regex) | RE2 match on the metric name |
+| `http_route_matches` | span | string (regex) | RE2 match on `http.route` (e.g. `^/healthz$`) |
 | `over_budget` | all | bool | resolved at compile time (budget circuit breaker) |
 | `log_severity_not_in` / `span_status_not` | log / span | — | negate the error/SLO family (safe-downgrade guard) |
 
@@ -42,18 +46,22 @@ simply skipped for that signal — rules are **signal-aware**.
 
 ## 1. Visual editor (simplest to see)
 
-Static, offline, no backend:
+Two ways to run it:
 
 ```bash
-make policy-editor        # serves the repo
+make policy-editor        # static, offline, no backend
 # open http://localhost:8000/tools/policy-editor/
+
+make policy-serve         # same editor + live OTTL preview (POST /api/compile)
+# open http://localhost:8000/tools/policy-editor/ and use "Preview compiled OTTL"
 ```
 
 Compose rules with the decision-matrix builder (add/reorder, condition picker,
 per-tier decisions), see live validation and the resulting `routing-policy.yaml`,
 then **Copy/Download YAML** (commit it) or **Copy selected rule (JSON)** to hand
-to `policyctl` below. The editor does not compile OTTL — the authoritative
-OTTL/cost diff comes from `policyctl compile --dry-run` and the dev pipeline.
+to `policyctl` below. Under `make policy-serve`, the **Preview compiled OTTL**
+button shows the authoritative compiled OTTL diff (the same compiler the CI uses);
+with the plain static server that button explains it needs `policyctl serve`.
 
 ## 2. CLI — `policyctl`
 

@@ -19,6 +19,8 @@ Commands:
   ledger [--env E]            Show the deployment ledger.
   rollback --env E [--to REF] Roll policy + generated artifacts back to a previous
                               policy.version / git SHA and record the rollback.
+  serve [--port 8000]         Serve the web editor and a POST /api/compile endpoint
+                              so the editor can show authoritative OTTL/cost previews.
 
 See docs/governance-authoring.md.
 """
@@ -30,6 +32,7 @@ import json
 import os
 import subprocess
 import sys
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import yaml
@@ -513,6 +516,75 @@ def cmd_rollback(args):
 
 # --------------------------------------------------------------------------- #
 
+# --------------------------------------------------------------------------- #
+# serve — static editor + on-demand compile (authoritative OTTL preview)
+# --------------------------------------------------------------------------- #
+
+class _EditorHandler(SimpleHTTPRequestHandler):
+    """Serves the repo statically (so the web editor can read policy/*.yaml and
+    conditions.json) and adds POST /api/compile, which compiles a posted routing
+    policy against the on-disk catalog/budget and returns the OTTL diff — the
+    authoritative preview the static editor can't produce on its own."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(REPO_ROOT), **kwargs)
+
+    def log_message(self, *args):  # keep the console quiet
+        pass
+
+    def do_POST(self):
+        if self.path.rstrip("/") != "/api/compile":
+            self.send_error(404, "not found")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            payload = json.loads(self.rfile.read(length) or "{}")
+            routing = payload.get("routing")
+            if routing is None:
+                raise ValueError("missing 'routing' in request body")
+            catalog = payload.get("catalog") or compiler.load_yaml(CATALOG_PATH)
+            budget = payload.get("budget") or compiler.load_yaml(BUDGET_PATH)
+            result = compiler.compile_all(catalog, routing, budget)
+            new_collector = _dump_yaml(result["config"])
+            old_collector = _strip_header(COLLECTOR_OUT.read_text()) if COLLECTOR_OUT.exists() else ""
+            diff = "\n".join(difflib.unified_diff(
+                old_collector.splitlines(), new_collector.splitlines(),
+                fromfile="committed", tofile="new", lineterm=""))
+            self._send_json(200, {
+                "version": result["version"],
+                "committed_version": _committed_version(),
+                "collector_yaml": new_collector,
+                "prometheus_yaml": _dump_yaml(result["prometheus_rules"]),
+                "diff": diff,
+                "summary": _policy_summary(catalog, routing, budget),
+            })
+        except Exception as exc:  # noqa: BLE001 — surface any error as JSON, not a 500 page
+            self._send_json(400, {"error": str(exc)})
+
+    def _send_json(self, code, obj):
+        data = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+def cmd_serve(args):
+    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), _EditorHandler)
+    editor_url = f"http://localhost:{args.port}/tools/policy-editor/"
+    print(f"[policyctl] serving {REPO_ROOT} + POST /api/compile on http://localhost:{args.port}")
+    print(f"[policyctl] open the editor (with live OTTL preview): {editor_url}")
+    print("[policyctl] Ctrl-C to stop")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\n[policyctl] stopped")
+    finally:
+        httpd.server_close()
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="policyctl", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -564,6 +636,10 @@ def build_parser():
     rb.add_argument("--actor", default=None)
     rb.add_argument("--yes", action="store_true")
     rb.set_defaults(func=cmd_rollback)
+
+    sv = sub.add_parser("serve", help="serve the web editor + on-demand OTTL preview (POST /api/compile)")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.set_defaults(func=cmd_serve)
     return p
 
 

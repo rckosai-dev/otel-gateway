@@ -66,6 +66,37 @@
       "render": "metric_slo",
       "pattern": "^(.*_latency_seconds|.*_error_rate|.*_request_count)$"
     },
+    "env": {
+      "label": "Deployment environment",
+      "description": "Match one or more values of the resource attribute deployment.environment (e.g. prod, staging).",
+      "signals": ["log", "span", "metric"],
+      "value": { "type": "array" },
+      "render": "resource_str_in",
+      "attr": "deployment.environment"
+    },
+    "region": {
+      "label": "Cloud region",
+      "description": "Match one or more values of the resource attribute cloud.region (e.g. us-east-1).",
+      "signals": ["log", "span", "metric"],
+      "value": { "type": "array" },
+      "render": "resource_str_in",
+      "attr": "cloud.region"
+    },
+    "metric_name_matches": {
+      "label": "Metric name matches (regex)",
+      "description": "Match metrics whose name matches this RE2 regular expression. Metric signals only.",
+      "signals": ["metric"],
+      "value": { "type": "string" },
+      "render": "name_matches"
+    },
+    "http_route_matches": {
+      "label": "HTTP route matches (regex)",
+      "description": "Match spans whose http.route attribute matches this RE2 regular expression (e.g. ^/healthz$). Span signals only.",
+      "signals": ["span"],
+      "value": { "type": "string" },
+      "render": "attr_matches",
+      "attr": "http.route"
+    },
     "over_budget": {
       "label": "Service is over budget",
       "description": "Resolved at compile time from Prometheus (policy:over_budget:by_service). Expands to the set of over-budget services. Used by the budget circuit-breaker downgrade rule.",
