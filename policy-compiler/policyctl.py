@@ -19,8 +19,9 @@ Commands:
   ledger [--env E]            Show the deployment ledger.
   rollback --env E [--to REF] Roll policy + generated artifacts back to a previous
                               policy.version / git SHA and record the rollback.
-  serve [--port 8000]         Serve the web editor and a POST /api/compile endpoint
-                              so the editor can show authoritative OTTL/cost previews.
+  serve [--port 8000] [--apply]  Serve the web editor + /api/compile (OTTL preview).
+                              With --apply also enable /api/save (write + compile) and
+                              /api/apply (also restart the local collector) — localhost only.
 
 See docs/governance-authoring.md.
 """
@@ -522,9 +523,16 @@ def cmd_rollback(args):
 
 class _EditorHandler(SimpleHTTPRequestHandler):
     """Serves the repo statically (so the web editor can read policy/*.yaml and
-    conditions.json) and adds POST /api/compile, which compiles a posted routing
-    policy against the on-disk catalog/budget and returns the OTTL diff — the
-    authoritative preview the static editor can't produce on its own."""
+    conditions.json) and adds JSON endpoints:
+      POST /api/compile  — compile a posted routing policy, return the OTTL diff
+                           (read-only preview; always on).
+      POST /api/save     — write routing-policy.yaml + regenerate artifacts.
+      POST /api/apply    — save, then restart the local collector + record deploy.
+    The two mutating endpoints require `policyctl serve --apply` (allow_write) and
+    only accept localhost Host headers. They edit the working tree locally — they
+    never push or bypass the PR/CI governance path."""
+
+    allow_write = False  # set by cmd_serve when --apply is passed
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(REPO_ROOT), **kwargs)
@@ -532,34 +540,103 @@ class _EditorHandler(SimpleHTTPRequestHandler):
     def log_message(self, *args):  # keep the console quiet
         pass
 
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return json.loads(self.rfile.read(length) or "{}")
+
+    def _host_is_local(self):
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+        return host in ("localhost", "127.0.0.1", "")
+
     def do_POST(self):
-        if self.path.rstrip("/") != "/api/compile":
+        route = self.path.rstrip("/")
+        actions = {"/api/compile": self._compile, "/api/save": self._save, "/api/apply": self._apply}
+        fn = actions.get(route)
+        if fn is None:
             self.send_error(404, "not found")
             return
+        if route in ("/api/save", "/api/apply"):
+            if not type(self).allow_write:
+                self._send_json(403, {"error": "write disabled — start `policyctl serve --apply`"})
+                return
+            if not self._host_is_local():
+                self._send_json(403, {"error": "refused: non-localhost Host header"})
+                return
         try:
-            length = int(self.headers.get("Content-Length", 0))
-            payload = json.loads(self.rfile.read(length) or "{}")
-            routing = payload.get("routing")
-            if routing is None:
-                raise ValueError("missing 'routing' in request body")
-            catalog = payload.get("catalog") or compiler.load_yaml(CATALOG_PATH)
-            budget = payload.get("budget") or compiler.load_yaml(BUDGET_PATH)
-            result = compiler.compile_all(catalog, routing, budget)
-            new_collector = _dump_yaml(result["config"])
-            old_collector = _strip_header(COLLECTOR_OUT.read_text()) if COLLECTOR_OUT.exists() else ""
-            diff = "\n".join(difflib.unified_diff(
-                old_collector.splitlines(), new_collector.splitlines(),
-                fromfile="committed", tofile="new", lineterm=""))
-            self._send_json(200, {
-                "version": result["version"],
-                "committed_version": _committed_version(),
-                "collector_yaml": new_collector,
-                "prometheus_yaml": _dump_yaml(result["prometheus_rules"]),
-                "diff": diff,
-                "summary": _policy_summary(catalog, routing, budget),
-            })
+            fn()
         except Exception as exc:  # noqa: BLE001 — surface any error as JSON, not a 500 page
             self._send_json(400, {"error": str(exc)})
+
+    def _compile(self):
+        payload = self._read_body()
+        routing = payload.get("routing")
+        if routing is None:
+            raise ValueError("missing 'routing' in request body")
+        catalog = payload.get("catalog") or compiler.load_yaml(CATALOG_PATH)
+        budget = payload.get("budget") or compiler.load_yaml(BUDGET_PATH)
+        result = compiler.compile_all(catalog, routing, budget)
+        new_collector = _dump_yaml(result["config"])
+        old_collector = _strip_header(COLLECTOR_OUT.read_text()) if COLLECTOR_OUT.exists() else ""
+        diff = "\n".join(difflib.unified_diff(
+            old_collector.splitlines(), new_collector.splitlines(),
+            fromfile="committed", tofile="new", lineterm=""))
+        self._send_json(200, {
+            "version": result["version"],
+            "committed_version": _committed_version(),
+            "collector_yaml": new_collector,
+            "prometheus_yaml": _dump_yaml(result["prometheus_rules"]),
+            "diff": diff,
+            "summary": _policy_summary(catalog, routing, budget),
+        })
+
+    def _write_and_compile(self, routing):
+        """Validate + write routing-policy.yaml (keeping its comment header) and
+        regenerate the committed artifacts via compile.py. Returns a result dict."""
+        catalog = compiler.load_yaml(CATALOG_PATH)
+        budget = compiler.load_yaml(BUDGET_PATH)
+        compiler.validate_policies(catalog, routing, budget)  # fail before writing
+        ROUTING_PATH.write_text(_preserving_header(ROUTING_PATH) + _dump_yaml(routing))
+        proc = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "policy-compiler" / "compile.py")],
+            cwd=REPO_ROOT, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError("compile failed: " + (proc.stderr or proc.stdout).strip())
+        return {
+            "ok": True,
+            "version": compiler.policy_version(catalog, routing, budget),
+            "summary": _policy_summary(catalog, routing, budget),
+        }
+
+    def _save(self):
+        payload = self._read_body()
+        routing = payload.get("routing")
+        if routing is None:
+            raise ValueError("missing 'routing' in request body")
+        data = self._write_and_compile(routing)
+        data["message"] = ("Saved routing-policy.yaml and regenerated the OTTL. "
+                           "Commit and open a PR to govern the change.")
+        self._send_json(200, data)
+
+    def _apply(self):
+        payload = self._read_body()
+        routing = payload.get("routing")
+        if routing is None:
+            raise ValueError("missing 'routing' in request body")
+        data = self._write_and_compile(routing)
+        up = subprocess.run(["docker", "compose", "up", "-d"], cwd=REPO_ROOT,
+                            capture_output=True, text=True)
+        restart = subprocess.run(["docker", "compose", "restart", "otel-gateway-collector"],
+                                cwd=REPO_ROOT, capture_output=True, text=True)
+        data["applied"] = restart.returncode == 0
+        if data["applied"]:
+            subprocess.run([sys.executable, str(Path(__file__).resolve()),
+                            "record-deploy", "--env", "dev", "--note", "editor apply"],
+                           cwd=REPO_ROOT, capture_output=True, text=True)
+            data["message"] = "Saved + applied to dev (collector restarted, ledger updated)."
+        else:
+            err = (restart.stderr or up.stderr or "docker not available").strip()
+            data["message"] = "Saved, but apply skipped (local dev only): " + err[:200]
+        self._send_json(200, data)
 
     def _send_json(self, code, obj):
         data = json.dumps(obj).encode("utf-8")
@@ -571,10 +648,15 @@ class _EditorHandler(SimpleHTTPRequestHandler):
 
 
 def cmd_serve(args):
+    _EditorHandler.allow_write = bool(args.apply)
     httpd = ThreadingHTTPServer(("127.0.0.1", args.port), _EditorHandler)
     editor_url = f"http://localhost:{args.port}/tools/policy-editor/"
-    print(f"[policyctl] serving {REPO_ROOT} + POST /api/compile on http://localhost:{args.port}")
-    print(f"[policyctl] open the editor (with live OTTL preview): {editor_url}")
+    mode = "read-write (save/apply enabled)" if args.apply else "read-only (preview only)"
+    print(f"[policyctl] serving {REPO_ROOT} on http://localhost:{args.port}  [{mode}]")
+    print(f"[policyctl] open the editor: {editor_url}")
+    if args.apply:
+        print("[policyctl] WARNING: /api/save and /api/apply write the working tree and "
+              "restart the local collector. Localhost only — never expose this port.")
     print("[policyctl] Ctrl-C to stop")
     try:
         httpd.serve_forever()
@@ -639,6 +721,9 @@ def build_parser():
 
     sv = sub.add_parser("serve", help="serve the web editor + on-demand OTTL preview (POST /api/compile)")
     sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--apply", action="store_true",
+                    help="enable /api/save and /api/apply so the editor can write the "
+                         "working tree and restart the local collector (localhost only)")
     sv.set_defaults(func=cmd_serve)
     return p
 

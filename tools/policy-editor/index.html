@@ -59,6 +59,15 @@
           <button class="btn" id="downloadYaml">Download YAML</button>
         </div>
         <div class="btn-row">
+          <button class="btn primary" id="saveEdits">Compile &amp; Save</button>
+          <button class="btn" id="applyEdits">Apply (dev)</button>
+        </div>
+        <p class="hint">Needs <code>policyctl serve --apply</code>. Save writes
+          <code>routing-policy.yaml</code> + regenerates OTTL locally (then commit / open a PR);
+          Apply also restarts the local collector. Inline YAML comments are not preserved on save —
+          review the diff before committing.</p>
+        <pre id="applyStatus" class="preview" hidden></pre>
+        <div class="btn-row">
           <button class="btn" id="copyRuleJson">Copy selected rule (JSON)</button>
         </div>
         <p class="hint">Rule JSON pairs with

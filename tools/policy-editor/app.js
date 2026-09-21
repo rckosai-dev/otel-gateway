@@ -424,6 +424,34 @@ function wireExport() {
     copy(JSON.stringify(modelToRule(m), null, 2), e.target);
   });
   document.getElementById('previewOttl').addEventListener('click', previewOttl);
+  document.getElementById('saveEdits').addEventListener('click', () => mutate('/api/save', 'Save'));
+  document.getElementById('applyEdits').addEventListener('click', () => {
+    if (!confirm('Apply to dev? This writes routing-policy.yaml, regenerates the OTTL and restarts the local collector.')) return;
+    mutate('/api/apply', 'Apply');
+  });
+}
+
+async function mutate(endpoint, label) {
+  const badIds = state.rules.map(r => r.id).filter((id, i, a) => !id || a.indexOf(id) !== i);
+  const out = document.getElementById('applyStatus');
+  out.hidden = false;
+  if (badIds.length) { out.textContent = label + ' blocked: fix invalid/duplicate rule ids first.'; return; }
+  out.textContent = label + ' in progress…';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routing: buildRoutingDoc() }),
+    });
+    let data; try { data = await res.json(); } catch { data = {}; }
+    if (!res.ok) {
+      out.textContent = label + ' failed: ' + (data.error || ('HTTP ' + res.status));
+      return;
+    }
+    out.textContent = `${data.message || (label + ' ok')}\n\npolicy.version: ${data.version}\n${data.summary || ''}`;
+  } catch (err) {
+    out.textContent = `${label} needs the local write server.\nRun:  policyctl serve --apply\nthen reload this page and try again.`;
+  }
 }
 
 async function previewOttl() {

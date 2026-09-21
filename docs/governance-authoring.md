@@ -54,6 +54,8 @@ make policy-editor        # static, offline, no backend
 
 make policy-serve         # same editor + live OTTL preview (POST /api/compile)
 # open http://localhost:8000/tools/policy-editor/ and use "Preview compiled OTTL"
+
+make policy-serve-apply   # also enables "Compile & Save" and "Apply (dev)" buttons
 ```
 
 Compose rules with the decision-matrix builder (add/reorder, condition picker,
@@ -62,6 +64,13 @@ then **Copy/Download YAML** (commit it) or **Copy selected rule (JSON)** to hand
 to `policyctl` below. Under `make policy-serve`, the **Preview compiled OTTL**
 button shows the authoritative compiled OTTL diff (the same compiler the CI uses);
 with the plain static server that button explains it needs `policyctl serve`.
+
+Under `make policy-serve-apply` (i.e. `policyctl serve --apply`) two more buttons
+appear — **Compile & Save** (writes `routing-policy.yaml` + regenerates the OTTL in
+the working tree) and **Apply (dev)** (also restarts the local collector and records
+a dev deploy). These edit local files only — **localhost-only, no push, no PR bypass**:
+you still commit and open a PR for governance, and saving does not preserve inline YAML
+comments (review the diff before committing).
 
 ## 2. CLI — `policyctl`
 

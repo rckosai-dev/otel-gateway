@@ -1,6 +1,6 @@
 .PHONY: compile-policy up down load logs validate-terraform validate check-parquet cost-report \
-        policy-editor policy-serve new-rule policy-validate policy-tests deploy-dev deploy-uat \
-        rollback-dev rollback-uat smoke ledger
+        policy-editor policy-serve policy-serve-apply new-rule policy-validate policy-tests \
+        deploy-dev deploy-uat rollback-dev rollback-uat smoke ledger
 
 compile-policy:
 	python3 policy-compiler/compile.py
@@ -16,6 +16,11 @@ policy-editor:
 # /api/compile endpoint the editor's "Preview compiled OTTL" button calls.
 policy-serve:
 	python3 policy-compiler/policyctl.py serve --port 8000
+
+# Editor with write-back: enables the "Compile & Save" and "Apply (dev)" buttons
+# (writes the working tree + restarts the local collector). Localhost only.
+policy-serve-apply:
+	python3 policy-compiler/policyctl.py serve --port 8000 --apply
 
 # Interactive rule wizard (or use: policyctl new-rule --from-json rule.json --before <id>)
 new-rule:
