@@ -67,6 +67,9 @@ make ledger           # show the deployment ledger (traceability)
 See [`docs/governance-authoring.md`](docs/governance-authoring.md) for the full
 workflow and [`docs/control-plane-comparison.md`](docs/control-plane-comparison.md)
 for the GitOps-vs-control-plane (OpAMP / Bindplane / Grafana Fleet) trade-offs.
+For the fleet/multicloud governance framing (control plane / data plane /
+runtime plane), see
+[`docs/governance-planes-multicloud.md`](docs/governance-planes-multicloud.md).
 
 ## State of this development environment
 
